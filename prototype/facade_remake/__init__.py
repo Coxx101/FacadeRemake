@@ -1,0 +1,3 @@
+"""
+FacadeRemake 原型
+"""

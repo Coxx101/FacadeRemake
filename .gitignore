@@ -1,0 +1,55 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+.env
+
+# === Node / Frontend ===
+node_modules/
+frontend/dist/
+frontend/node_modules/
+*.tsbuildinfo
+
+# === IDE / Editor ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Logs ===
+*.log
+ws_server.log
+ws_server_err.log
+
+# === WorkBuddy / Memory ===
+.workbuddy/
+
+# === Non-code: References (PDFs, docs, papers) ===
+References/
+
+# === Non-code: Framework docs ===
+Framework/论文大纲.md
+Framework/中期报告.md
+
+# === Playwright / Learnings ===
+.playwright-cli/
+.learnings/
+
+# === Misc ===
+*.pdf
+*.doc

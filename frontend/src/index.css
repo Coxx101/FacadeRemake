@@ -1,0 +1,172 @@
+@import "tailwindcss";
+
+/* ── Tailwind v4 @theme 扩展 ── */
+@theme {
+  --color-bg-primary: #0f1117;
+  --color-bg-secondary: #1a1d27;
+  --color-bg-card: #1e2130;
+  --color-bg-hover: #252840;
+  --color-bg-input: #131828;
+  --color-border-default: #2e3250;
+  --color-border-active: #4f6ef7;
+  --color-text-primary: #e8eaf0;
+  --color-text-secondary: #8891b0;
+  --color-text-muted: #4a5070;
+  --color-accent-blue: #4f6ef7;
+  --color-accent-gold: #f5a623;
+  --color-accent-green: #2ecc71;
+  --color-accent-red: #e74c3c;
+  --color-accent-yellow: #f1c40f;
+  --color-accent-orange: #e67e22;
+}
+
+/* ── CSS 自定义属性（兼容非 Tailwind 场景） ── */
+:root {
+  --bg-primary: #0f1117;
+  --bg-secondary: #1a1d27;
+  --bg-card: #1e2130;
+  --bg-hover: #252840;
+  --bg-input: #131828;
+  --border-default: #2e3250;
+  --border-active: #4f6ef7;
+  --text-primary: #e8eaf0;
+  --text-secondary: #8891b0;
+  --text-muted: #4a5070;
+  --accent-blue: #4f6ef7;
+  --accent-gold: #f5a623;
+  --accent-green: #2ecc71;
+  --accent-red: #e74c3c;
+  --accent-yellow: #f1c40f;
+  --accent-orange: #e67e22;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+  height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 全局表单元素样式 ── */
+input,
+textarea,
+select {
+  font-family: inherit;
+  color: var(--text-primary);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent-blue) !important;
+  box-shadow: 0 0 0 2px rgba(79, 110, 247, 0.25);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+/* 聚焦可见性 — 可访问性 */
+:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+/* ── React Flow 深色主题覆盖 ── */
+.react-flow__background {
+  background-color: var(--bg-primary);
+}
+
+.react-flow__minimap {
+  background-color: var(--bg-secondary) !important;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+
+.react-flow__controls {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.react-flow__controls-button {
+  background-color: var(--bg-secondary) !important;
+  border-bottom: 1px solid var(--border-default) !important;
+  fill: var(--text-secondary) !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: var(--bg-hover) !important;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ── Play 模式按钮 hover 过渡（仅做 transition 基础） ── */
+[data-play-mode] button:not(:disabled) {
+  transition: background-color 0.15s, color 0.15s, opacity 0.15s;
+}
+
+/* ── Custom animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.15s ease-out;
+}
+
+.slide-in {
+  animation: slideIn 0.2s ease-out;
+}
+
+/* ── 选择文本色 ── */
+::selection {
+  background-color: rgba(79, 110, 247, 0.3);
+  color: var(--text-primary);
+}

@@ -1,0 +1,421 @@
+import { useState, useEffect } from 'react'
+import { Box, Flag, Layers } from 'lucide-react'
+import { useStore } from '../../store/useStore'
+import type { Landmark, WorldStateEffect } from '../../types'
+import KeyInput from '../shared/KeyInput'
+import TransitionsTab from './TransitionsTab'
+import StoryletPool from './StoryletPool'
+
+export default function Inspector() {
+  const selectedId = useStore((s) => s.selectedLandmarkId)
+  const selectedIds = useStore((s) => s.selectedLandmarkIds)
+  const landmarks = useStore((s) => s.landmarks)
+  const updateLandmark = useStore((s) => s.updateLandmark)
+  const inspectorTab = useStore((s) => s.inspectorTab)
+  const setInspectorTab = useStore((s) => s.setInspectorTab)
+  const inspectorWidth = useStore((s) => s.inspectorWidth)
+
+  const landmark = landmarks.find((l) => l.id === selectedId)
+
+  // 多选时显示批量提示
+  if (selectedIds.length > 1) {
+    const selectedLandmarks = selectedIds
+      .map((id) => landmarks.find((l) => l.id === id))
+      .filter(Boolean) as Landmark[]
+    return (
+      <div style={{
+        width: inspectorWidth, flexShrink: 0,
+        borderLeft: '1px solid #2e3250',
+        background: '#1a1d27',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'column', gap: '12px', padding: '24px',
+      }}>
+        <div style={{ fontSize: '32px', opacity: 0.4 }}><Layers size={32} color="#4f6ef7" /></div>
+        <div style={{ color: '#e8eaf0', fontSize: '14px', fontWeight: 600 }}>
+          已选中 {selectedIds.length} 个节点
+        </div>
+        <div style={{ color: '#8891b0', fontSize: '12px', textAlign: 'center', lineHeight: 1.6 }}>
+          可拖拽移动全部选中节点<br />按 Delete 键批量删除
+        </div>
+        <div style={{ color: '#4a5070', fontSize: '11px', textAlign: 'center', lineHeight: 1.5, marginTop: '8px' }}>
+          {selectedLandmarks.map((l) => l.title || l.id).join('、')}
+        </div>
+      </div>
+    )
+  }
+
+  if (!selectedId || !landmark) {
+    return (
+      <div style={{
+        width: inspectorWidth, flexShrink: 0,
+        borderLeft: '1px solid #2e3250',
+        background: '#1a1d27',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'column', gap: '12px',
+      }}>
+        <div style={{ fontSize: '32px', opacity: 0.3 }}><Box size={32} color="#4a5070" /></div>
+        <div style={{ color: '#4a5070', fontSize: '13px', textAlign: 'center' }}>
+          点击蓝图中的节点<br />查看并编辑属性
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{
+      width: inspectorWidth, flexShrink: 0,
+      borderLeft: '1px solid #2e3250',
+      background: '#1a1d27',
+      display: 'flex', flexDirection: 'column',
+      overflow: 'hidden', height: '100%',
+    }}>
+      {/* 节点标题栏 */}
+      <div style={{
+        padding: '14px 16px', borderBottom: '1px solid #2e3250',
+        background: '#1e2130',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '18px' }}>{landmark.is_ending ? <Flag size={18} color="#f5a623" /> : <Box size={18} color="#4f6ef7" />}</span>
+          <div>
+            <div style={{ color: '#e8eaf0', fontWeight: 700, fontSize: '14px' }}>
+              {landmark.title}
+            </div>
+            <div style={{ color: '#4a5070', fontSize: '11px', fontFamily: 'monospace' }}>
+              id: {landmark.id}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{
+        display: 'flex', borderBottom: '1px solid #2e3250',
+        background: '#1a1d27',
+      }}>
+        {(['properties', 'transitions'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setInspectorTab(tab)}
+            style={{
+              flex: 1, padding: '10px 0', fontSize: '12px', fontWeight: 600,
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: inspectorTab === tab ? '#4f6ef7' : '#4a5070',
+              borderBottom: `2px solid ${inspectorTab === tab ? '#4f6ef7' : 'transparent'}`,
+              transition: 'all 0.15s',
+            }}
+          >
+            {tab === 'properties' ? '属性' : `出边 (${landmark.transitions.length})`}
+          </button>
+        ))}
+      </div>
+
+      {/* 内容区 */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
+        {inspectorTab === 'properties'
+          ? <PropertiesTab landmark={landmark} onUpdate={updateLandmark} />
+          : <TransitionsTab landmark={landmark} onUpdate={updateLandmark} landmarks={landmarks} />
+        }
+      </div>
+
+      {/* Storylet Pool（始终显示在 Inspector 底部） */}
+      <StoryletPool landmark={landmark} />
+    </div>
+  )
+}
+
+// ── 属性 Tab ─────────────────────────────────────────────────────────────────
+
+function PropertiesTab({
+  landmark,
+  onUpdate,
+}: {
+  landmark: Landmark
+  onUpdate: (id: string, patch: Partial<Landmark>) => void
+}) {
+  const [form, setForm] = useState({ ...landmark })
+
+  useEffect(() => { setForm({ ...landmark }) }, [landmark.id])
+
+  const save = () => onUpdate(landmark.id, form)
+
+  const set = (key: keyof Landmark, value: unknown) => {
+    setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <Field label="ID">
+        <input
+          value={form.id} readOnly
+          style={{ ...inputStyle, background: '#131828', cursor: 'not-allowed' }}
+        />
+      </Field>
+
+      <Field label="标题">
+        <input
+          value={form.title}
+          onChange={(e) => set('title', e.target.value)}
+          onBlur={save}
+          style={inputStyle}
+        />
+      </Field>
+
+      <Field label="描述">
+        <textarea
+          value={form.description}
+          onChange={(e) => set('description', e.target.value)}
+          onBlur={save}
+          rows={3}
+          style={{ ...inputStyle, resize: 'vertical' }}
+        />
+      </Field>
+
+      <Field label="Phase Tag">
+        <input
+          value={form.phase_tag}
+          onChange={(e) => set('phase_tag', e.target.value)}
+          onBlur={save}
+          style={inputStyle}
+          placeholder="act1, act2, ending ..."
+        />
+      </Field>
+
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <Field label="Max Storylets" style={{ flex: 1 }}>
+          <input
+            type="number" min={1}
+            value={form.max_storylets ?? ''}
+            onChange={(e) => set('max_storylets', e.target.value ? Number(e.target.value) : undefined)}
+            onBlur={save}
+            style={inputStyle}
+            placeholder="无限制"
+          />
+        </Field>
+        <Field label="是否结局" style={{ flex: 1 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={form.is_ending}
+              onChange={(e) => { set('is_ending', e.target.checked); setTimeout(save, 50) }}
+              style={{ width: '16px', height: '16px', accentColor: '#f5a623' }}
+            />
+            <span style={{ color: '#8891b0', fontSize: '12px' }}>is_ending</span>
+          </label>
+        </Field>
+      </div>
+
+      {form.is_ending && (
+        <Field label="结局文本">
+          <textarea
+            value={form.ending_content}
+            onChange={(e) => set('ending_content', e.target.value)}
+            onBlur={save}
+            rows={4}
+            style={{ ...inputStyle, resize: 'vertical' }}
+            placeholder="结局叙事文本..."
+          />
+        </Field>
+      )}
+
+      <SectionTitle>叙事约束</SectionTitle>
+
+      <Field label="允许的 Storylet 标签">
+        <TagInput
+          tags={form.narrative_constraints?.allowed_storylet_tags ?? []}
+          onChange={(tags) => {
+            set('narrative_constraints', { ...form.narrative_constraints, allowed_storylet_tags: tags })
+            setTimeout(save, 50)
+          }}
+        />
+      </Field>
+
+      <Field label="禁止揭露的信息">
+        <TagInput
+          tags={form.narrative_constraints?.forbidden_reveals ?? []}
+          onChange={(tags) => {
+            set('narrative_constraints', { ...form.narrative_constraints, forbidden_reveals: tags })
+            setTimeout(save, 50)
+          }}
+        />
+      </Field>
+
+      <SectionTitle>进入时世界状态效果</SectionTitle>
+      <EffectListEditor
+        effects={form.world_state_effects_on_enter ?? []}
+        onChange={(effects) => { set('world_state_effects_on_enter', effects); setTimeout(save, 50) }}
+      />
+    </div>
+  )
+}
+
+// ── 小型子组件 ────────────────────────────────────────────────────────────────
+
+function Field({
+  label, children, style,
+}: {
+  label: string
+  children: React.ReactNode
+  style?: React.CSSProperties
+}) {
+  return (
+    <div style={style}>
+      <div style={{ color: '#8891b0', fontSize: '11px', marginBottom: '4px', fontWeight: 500 }}>
+        {label}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      color: '#4a5070', fontSize: '11px', fontWeight: 600,
+      letterSpacing: '0.08em', textTransform: 'uppercase',
+      paddingTop: '4px', borderTop: '1px solid #2e3250',
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function TagInput({ tags, onChange }: { tags: string[]; onChange: (tags: string[]) => void }) {
+  const [input, setInput] = useState('')
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+        {tags.map((tag) => (
+          <span
+            key={tag}
+            style={{
+              background: '#1e2a4a', border: '1px solid #2e3a60',
+              borderRadius: '4px', padding: '2px 8px',
+              fontSize: '11px', color: '#7090e0',
+              display: 'flex', alignItems: 'center', gap: '4px',
+            }}
+          >
+            {tag}
+            <button
+              onClick={() => onChange(tags.filter((t) => t !== tag))}
+              style={{ background: 'none', border: 'none', color: '#4a5070', cursor: 'pointer', fontSize: '12px', lineHeight: 1 }}
+            >×</button>
+          </span>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: '6px' }}>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.key === 'Enter' || e.key === ',') && input.trim()) {
+              onChange([...tags, input.trim()])
+              setInput('')
+              e.preventDefault()
+            }
+          }}
+          style={{ ...inputStyle, flex: 1 }}
+          placeholder="输入后按 Enter 添加"
+        />
+        <button
+          onClick={() => {
+            if (input.trim()) { onChange([...tags, input.trim()]); setInput('') }
+          }}
+          style={addBtnStyle}
+        >+</button>
+      </div>
+    </div>
+  )
+}
+
+function EffectListEditor({
+  effects,
+  onChange,
+}: {
+  effects: WorldStateEffect[]
+  onChange: (effects: WorldStateEffect[]) => void
+}) {
+  const addEffect = () =>
+    onChange([...effects, { type: 'set_flag', key: '', value: true }])
+
+  const updateEffect = (i: number, patch: Partial<WorldStateEffect>) => {
+    const next = effects.map((e, idx) => idx === i ? { ...e, ...patch } : e)
+    onChange(next)
+  }
+
+  const removeEffect = (i: number) => onChange(effects.filter((_, idx) => idx !== i))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {effects.map((effect, i) => (
+        <div key={i} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <select
+            value={effect.type}
+            onChange={(e) => updateEffect(i, { type: e.target.value as WorldStateEffect['type'] })}
+            style={{ ...selectStyle, width: '120px' }}
+          >
+            <option value="set_flag">set_flag</option>
+            <option value="set_quality">set_quality</option>
+            <option value="increment_quality">increment</option>
+            <option value="decrement_quality">decrement</option>
+          </select>
+          <KeyInput
+            value={effect.key}
+            onChange={(key) => updateEffect(i, { key })}
+            filter={effect.type.includes('flag') ? 'flag' : 'quality'}
+            style={{ fontSize: '11px' }}
+            placeholder="key"
+          />
+          {(effect.type === 'set_flag' || effect.type === 'set_quality') ? (
+            <input
+              value={String(effect.value ?? '')}
+              onChange={(e) => updateEffect(i, { value: e.target.value })}
+              style={{ ...inputStyle, width: '60px', fontSize: '11px' }}
+              placeholder="val"
+            />
+          ) : (
+            <input
+              type="number"
+              value={effect.amount ?? 1}
+              onChange={(e) => updateEffect(i, { amount: Number(e.target.value) })}
+              style={{ ...inputStyle, width: '50px', fontSize: '11px' }}
+            />
+          )}
+          <button onClick={() => removeEffect(i)} style={removeBtnStyle}>×</button>
+        </div>
+      ))}
+      <button onClick={addEffect} style={addBtnStyle}>+ 添加效果</button>
+    </div>
+  )
+}
+
+// ── 共用样式 ──────────────────────────────────────────────────────────────────
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '6px 10px',
+  background: '#131828', border: '1px solid #2e3250',
+  borderRadius: '6px', color: '#e8eaf0', fontSize: '12px',
+  outline: 'none', fontFamily: 'inherit',
+}
+
+const selectStyle: React.CSSProperties = {
+  padding: '6px 8px',
+  background: '#131828', border: '1px solid #2e3250',
+  borderRadius: '6px', color: '#e8eaf0', fontSize: '11px',
+  outline: 'none', cursor: 'pointer',
+}
+
+const addBtnStyle: React.CSSProperties = {
+  padding: '6px 12px',
+  background: '#1e2a4a', border: '1px solid #2e3a60',
+  borderRadius: '6px', color: '#4f6ef7', fontSize: '12px',
+  cursor: 'pointer', whiteSpace: 'nowrap',
+}
+
+const removeBtnStyle: React.CSSProperties = {
+  width: '24px', height: '24px', flexShrink: 0,
+  background: 'rgba(231,76,60,0.1)', border: '1px solid rgba(231,76,60,0.3)',
+  borderRadius: '4px', color: '#e74c3c', fontSize: '14px',
+  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+}
+
+export { inputStyle, selectStyle, addBtnStyle, removeBtnStyle }

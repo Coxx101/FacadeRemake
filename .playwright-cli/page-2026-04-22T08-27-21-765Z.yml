@@ -1,0 +1,21 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e6]
+      - generic [ref=e11]: FacadeStudio
+    - generic [ref=e12]: 交互叙事编辑器
+  - main [ref=e13]:
+    - generic [ref=e14]:
+      - heading "开始你的故事" [level=1] [ref=e15]
+      - paragraph [ref=e16]: 创建新的交互叙事世界，或继续编辑已有的故事项目。
+    - generic [ref=e17]:
+      - button "新建项目" [ref=e18] [cursor=pointer]:
+        - img [ref=e19]
+        - text: 新建项目
+      - button "导入 JSON" [ref=e20] [cursor=pointer]:
+        - img [ref=e21]
+        - text: 导入 JSON
+    - generic [ref=e24]:
+      - img [ref=e25]
+      - heading "还没有项目" [level=3] [ref=e28]
+      - paragraph [ref=e29]: 点击上方的「新建项目」按钮创建你的第一个交互叙事世界， 或「导入 JSON」加载已有的故事数据。

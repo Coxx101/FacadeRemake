@@ -1,0 +1,934 @@
+"""
+FacadeRemake WebSocket Server
+LLM 驱动的互动叙事后端
+"""
+import sys
+import os
+import json
+import asyncio
+from typing import Optional, Dict, Any, List
+from functools import partial
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+
+# ws_server.py 在 prototype/ 下，facade_remake 包也在 prototype/ 下
+sys.path.insert(0, os.path.dirname(__file__))
+
+from facade_remake.core.world_state import WorldState
+from facade_remake.core.storylet import StoryletManager
+from facade_remake.core.landmark import LandmarkManager
+from facade_remake.core.story_selector import StorySelector
+
+
+app = FastAPI(title="FacadeRemake WebSocket")
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class GameSession:
+    """一个 WebSocket 连接对应的游戏会话"""
+
+    def __init__(self, ws: WebSocket):
+        self.ws = ws
+        self._ws_ready = True  # ws 连接可用
+        self.turn = 0
+        self.game_ended = False
+
+        # 在主线程中保存 event loop 引用，供线程池中的回调使用
+        self._loop = asyncio.get_running_loop()
+
+        # ── LLM 初始化（优先于 managers，以便注入 llm_client）──
+        self.llm_client = None
+        self.trip_agent = None
+        self.grace_agent = None
+        self.director_agent = None
+        self._init_llm_agents()
+
+        # 初始化后端核心组件（空壳，等 init_scene 填充）
+        self.world_state = WorldState()
+        self.storylet_manager = StoryletManager(llm_client=self.llm_client)
+        self.landmark_manager = LandmarkManager(llm_client=self.llm_client)
+        self.story_selector = StorySelector(
+            self.storylet_manager,
+            self.landmark_manager,
+            llm_client=self.llm_client,
+        )
+
+        # 当前 Storylet
+        self.current_storylet = None
+        self.storylet_turn_count = 0
+
+        # 对话历史
+        self.conversation_history: List[str] = []
+
+        # 场景数据是否已加载
+        self.scene_loaded = False
+
+    def init_scene(self, scene_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """用前端传来的场景数据初始化 GameSession"""
+        messages: List[Dict[str, Any]] = []
+
+        landmarks = scene_data.get("landmarks", [])
+        storylets = scene_data.get("storylets", [])
+        characters = scene_data.get("characters", [])
+        world_state_definition = scene_data.get("world_state_definition", {})
+
+        if not landmarks:
+            # 空项目：通知前端没有场景数据
+            messages.append({
+                "type": "chat",
+                "role": "system",
+                "speech": "[提示] 该项目尚未配置任何 Landmark 节点。请先在 Design 模式中创建叙事蓝图。",
+            })
+            messages.append(self._get_state_snapshot())
+            return messages
+
+        # 1. 初始化 WorldState（根据 world_state_definition）
+        wsd_qualities = world_state_definition.get("qualities", [])
+        for q in wsd_qualities:
+            self.world_state.set_quality(q["key"], q.get("initial", 0))
+
+        wsd_flags = world_state_definition.get("flags", [])
+        for f in wsd_flags:
+            self.world_state.set_flag(f["key"], f.get("initial", False))
+
+        wsd_relationships = world_state_definition.get("relationships", [])
+        for r in wsd_relationships:
+            self.world_state.set_relationship(r["key"], r.get("initial", 0))
+
+        # 2. 加载 Landmarks
+        self.landmark_manager.load_from_dicts(landmarks)
+
+        # 3. 加载 Storylets
+        self.storylet_manager.load_from_dicts(storylets)
+
+        # 4. 设置初始 Landmark（取第一个非结局节点）
+        first_landmark = None
+        for lm in landmarks:
+            if not lm.get("is_ending", False):
+                first_landmark = lm["id"]
+                break
+        if first_landmark is None and landmarks:
+            first_landmark = landmarks[0]["id"]
+
+        if first_landmark:
+            self.landmark_manager.set_current(first_landmark, self.world_state)
+
+        self.scene_loaded = True
+
+        # 5. 用前端传来的角色配置初始化 CharacterAgent
+        if characters and self.llm_client:
+            self._init_characters_from_scene(characters)
+
+        # 6. 触发初始 Storylet 选择
+        if storylets:
+            initial_storylet = self.story_selector.select(
+                self.world_state, self.turn
+            )
+            if initial_storylet:
+                self.current_storylet = initial_storylet
+                self.storylet_turn_count = 0
+                self._apply_storylet_effects()
+                # 设置 Director 叙事目标
+                if initial_storylet.narrative_goal and self.director_agent:
+                    try:
+                        self.director_agent.set_current_goal(initial_storylet.narrative_goal)
+                    except Exception as e:
+                        print(f"[Director] set_current_goal 失败: {e}")
+                messages.append({
+                    "type": "chat",
+                    "role": "system",
+                    "speech": f"[Storylet] {initial_storylet.title} — {initial_storylet.narrative_goal[:60]}",
+                })
+
+        messages.append(self._get_state_snapshot())
+        return messages
+
+    def _init_llm_agents(self):
+        """初始化 LLM 相关 Agent"""
+        try:
+            from facade_remake.agents.llm_client import LLMClient
+            from facade_remake.agents.director import DirectorAgent
+
+            # 加载 .env.local / .env
+            from pathlib import Path
+            try:
+                from dotenv import load_dotenv
+                prototype_dir = Path(__file__).resolve().parent
+                env_local = prototype_dir / ".env.local"
+                env_file = prototype_dir / ".env"
+                if env_local.exists():
+                    load_dotenv(env_local)
+                elif env_file.exists():
+                    load_dotenv(env_file)
+            except ImportError:
+                pass
+
+            model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            self.llm_client = LLMClient(model=model)
+            self.llm_client.debug = True  # 终端也打印
+
+            # 注入 on_debug 回调：将 LLM 调试信息通过 WebSocket 推送到前端
+            # 回调在线程池中执行，必须用 call_soon_threadsafe 调度到主线程
+            ws_ref = self.ws
+            loop_ref = self._loop  # 闭包捕获主线程的 event loop
+            import time as _time
+            def _ws_debug_callback(event_type: str, payload: dict):
+                """LLMClient.on_debug 回调（线程池中执行）"""
+                try:
+                    msg = {
+                        "type": "llm_debug",
+                        "event": event_type,
+                        "data": payload,
+                        "ts": _time.time(),
+                    }
+                    async def _do_send():
+                        try:
+                            await ws_ref.send_json(msg)
+                        except Exception:
+                            pass
+                    coro = _do_send()
+                    loop_ref.call_soon_threadsafe(loop_ref.create_task, coro)
+                except Exception as e:
+                    print(f"[debug-ws] 推送失败: {e}")
+            self.llm_client.on_debug = _ws_debug_callback
+
+            self.director_agent = DirectorAgent(self.llm_client)
+            self.director_agent.set_debug(True)
+            print(f"[LLM] 已初始化 LLMClient + DirectorAgent（模型: {model}, debug=ON, WS推送=ON）")
+        except RuntimeError as e:
+            print(f"[LLM] 初始化失败: {e}")
+            print(f"[LLM] 将以无 LLM 模式运行（仅 WorldState/Storylet/Landmark 调度可用）")
+
+
+    def _init_characters_from_scene(self, characters: List[Dict[str, Any]]):
+        """根据前端传来的角色配置初始化 CharacterAgent"""
+        try:
+            from facade_remake.agents.llm_client import CharacterAgent
+
+            for char_data in characters:
+                char_id = char_data.get("id", "")
+                if char_id not in ("trip", "grace"):
+                    continue
+
+                # 构造 character_profile 供 CharacterAgent 使用
+                profile = {
+                    "name": char_data.get("name", char_id),
+                    "identity": char_data.get("identity", ""),
+                    "personality": char_data.get("personality", ""),
+                    "background": char_data.get("background", []),
+                    "secret_knowledge": char_data.get("secret_knowledge", []),
+                    "ng_words": char_data.get("ng_words", []),
+                }
+
+                # monologue_knowledge
+                monologues = char_data.get("monologues", [])
+                monologue_knowledge = []
+                for m in monologues:
+                    monologue_knowledge.append({
+                        "ref_secret": m.get("ref_secret", ""),
+                        "category": m.get("category", ""),
+                        "monologue": m.get("monologue", ""),
+                        "emotion_tags": m.get("emotion_tags", []),
+                    })
+                profile["monologue_knowledge"] = monologue_knowledge
+
+                # 行为库（由前端下发）
+                profile["behaviors"] = char_data.get("behaviors", [])
+                profile["behavior_meta"] = char_data.get("behavior_meta", {})
+
+                agent = CharacterAgent(self.llm_client, char_id, character_profile=profile)
+
+                if char_id == "trip":
+                    self.trip_agent = agent
+                elif char_id == "grace":
+                    self.grace_agent = agent
+
+                print(f"[LLM] CharacterAgent 初始化完成: {char_id}（{profile['name']}）")
+        except Exception as e:
+            print(f"[LLM] 角色初始化失败: {e}")
+
+    def _get_state_snapshot(self) -> Dict[str, Any]:
+        """获取当前完整状态快照（推送给前端）"""
+        # 解析 landmark 信息
+        lm_id = self.landmark_manager.current_landmark_id
+        lm_obj = self.landmark_manager.get_current()
+        landmark_info = None
+        if lm_obj:
+            landmark_info = {
+                "id": lm_id,
+                "title": lm_obj.title,
+                "phase_tag": lm_obj.phase_tag,
+                "is_ending": lm_obj.is_ending,
+            }
+
+        # 解析 storylet 信息
+        sl_obj = self.current_storylet
+        storylet_info = None
+        if sl_obj:
+            storylet_info = {
+                "id": sl_obj.id,
+                "title": sl_obj.title,
+                "narrative_goal": sl_obj.narrative_goal,
+                "phase_tags": sl_obj.phase_tags,
+            }
+
+        return {
+            "type": "state_update",
+            "world_state": self.world_state.to_dict(),
+            "current_landmark_id": lm_id,
+            "current_landmark": landmark_info,
+            "current_storylet_id": sl_obj.id if sl_obj else None,
+            "current_storylet": storylet_info,
+            "turn": self.turn,
+            "game_ended": self.game_ended,
+        }
+
+    def _decide_speakers(self, player_input: str, storylet_content: Dict) -> List[str]:
+        """委托 DirectorAgent 决定本轮哪些角色回应及顺序。
+
+        如果 Director 不可用，回退到简单的点名检测。
+        """
+        if self.director_agent and self.director_agent.llm_client:
+            return self.director_agent.decide_speakers(
+                player_input=player_input,
+                storylet_content=storylet_content,
+                dialogue_history=self.conversation_history,
+                characters=["trip", "grace"]
+            )
+
+        # Fallback：Director 不可用时，仅做点名检测
+        player_lower = player_input.lower()
+        mentioned = []
+        if any(kw in player_lower for kw in ["trip", "特拉维斯"]):
+            mentioned.append("trip")
+        if any(kw in player_input for kw in ["grace", "格蕾丝"]):
+            mentioned.append("grace")
+        if mentioned:
+            print(f"[DRAMA] 点名检测（fallback 模式）：{mentioned}")
+            return mentioned
+        return ["trip", "grace"]
+
+    def _generate_storylet_response(self, storylet, player_input: str) -> List[Dict[str, Any]]:
+        """根据当前 Storylet 生成响应消息（LLM 驱动，含角色间对话循环）"""
+        content = storylet.content
+
+        messages: List[Dict[str, Any]] = []
+
+        # 1. 旁白（仅在 Storylet 首轮发送，避免每轮重复）
+        director_note = content.get("director_note", "")
+        if director_note and self.storylet_turn_count <= 1:
+            sentences = director_note.split("。")
+            narration = "。".join(sentences[:2]).strip()
+            if narration and not narration.endswith("。"):
+                narration += "。"
+            if narration:
+                messages.append({
+                    "type": "chat",
+                    "role": "narrator",
+                    "speech": narration,
+                })
+
+        # 2. Director 决定本轮哪些角色先开口
+        initial_speakers = self._decide_speakers(player_input, content)
+
+        # 3. 角色对话循环（Character Banter Loop）
+        world_state_dict = self.world_state.to_dict()
+        forbidden = storylet.content.get("forbidden_reveals", [])
+        allowed_behaviors = storylet.content.get("allowed_behaviors", None)
+
+        char_agents = {"trip": self.trip_agent, "grace": self.grace_agent}
+        char_display = {"trip": "Trip", "grace": "Grace"}
+
+        # Phase 1: 初始发言者响应（由玩家输入触发）
+        last_speech = ""
+        last_character = None
+
+        for i, character in enumerate(initial_speakers):
+            agent = char_agents.get(character)
+            if agent is None:
+                continue
+
+            # 为发言角色生成 Director 指令
+            director_instruction = ""
+            if self.director_agent and self.current_storylet:
+                try:
+                    sl_content = self.current_storylet.content
+                    director_instruction = self.director_agent.generate_instruction_for(
+                        character, sl_content, world_state_dict,
+                        self.conversation_history, use_llm=True
+                    )
+                except Exception as e:
+                    print(f"[Director] 指令生成失败（{character}）: {e}")
+
+            # 多个初始发言者时，第二个角色附加提示
+            if i > 0:
+                extra_note = "（另一个角色已经做出了回应，你根据情境决定是否开口，可以沉默、用肢体回应或简短说话，不要重复对方的内容。）"
+                director_instruction = director_instruction + "\n" + extra_note if director_instruction else extra_note
+
+            try:
+                result = agent.generate_response(
+                    player_input=player_input,
+                    storylet_content=content,
+                    world_state=world_state_dict,
+                    conversation_history=self.conversation_history,
+                    director_instruction=director_instruction,
+                    forbidden_topics=forbidden,
+                    allowed_behaviors=allowed_behaviors,
+                )
+                speech = result.get("speech", "")
+                action = result.get("action", "")
+                thought = result.get("thought", "")
+
+                # 记录到对话历史
+                parts = [p for p in [speech, action] if p]
+                if parts:
+                    self.conversation_history.append(f"{character}: {'  '.join(parts)}")
+                messages.append({
+                    "type": "chat",
+                    "role": character,
+                    "speaker_name": char_display[character],
+                    "speech": speech,
+                    "action": action,
+                    "thought": thought,
+                })
+
+                last_speech = speech
+                last_character = character
+
+            except Exception as e:
+                print(f"[LLM] {character} 响应失败: {e}")
+                messages.append({
+                    "type": "chat",
+                    "role": "system",
+                    "speech": f"[Error] {character} 生成失败: {e}",
+                })
+
+        # Phase 2: 角色间对话循环（Banter Loop）
+        banter_round = 0
+        while last_character and last_speech:
+            banter_round += 1
+
+            # Director 判断：对方是否需要接话？
+            if not self.director_agent or not self.director_agent.llm_client:
+                break  # Director 不可用，不进行 banter
+
+            decision = self.director_agent.should_banter_continue(
+                last_speech=last_speech,
+                last_character=last_character,
+                dialogue_history=self.conversation_history,
+                world_state=world_state_dict,
+                banter_round=banter_round,
+            )
+
+            if not decision.get("should", False):
+                print(f"[Banter] 第{banter_round}轮 → 停止（{decision.get('reason', '')}）")
+                break
+
+            responder = decision.get("responder", "")
+            if responder not in char_agents:
+                break
+
+            print(f"[Banter] 第{banter_round}轮 → {responder} 接话（{decision.get('reason', '')}）")
+
+            # 为接话角色生成 Director 指令
+            director_instruction = ""
+            if self.director_agent and self.current_storylet:
+                try:
+                    sl_content = self.current_storylet.content
+                    director_instruction = self.director_agent.generate_instruction_for(
+                        responder, sl_content, world_state_dict,
+                        self.conversation_history, use_llm=True
+                    )
+                    # banter 模式额外提示：你在回应配偶
+                    director_instruction += "\n（你在回应你的配偶，不是回应玩家。保持角色间的互动。）"
+                except Exception as e:
+                    print(f"[Director] banter 指令生成失败（{responder}）: {e}")
+
+            banter_ctx = {
+                "trigger_character": last_character,
+                "target_character": responder,
+                "banter_round": banter_round,
+            }
+
+            try:
+                agent = char_agents[responder]
+                result = agent.generate_response(
+                    player_input=None,  # banter 模式：不是玩家触发
+                    storylet_content=content,
+                    world_state=world_state_dict,
+                    conversation_history=self.conversation_history,
+                    director_instruction=director_instruction,
+                    forbidden_topics=forbidden,
+                    allowed_behaviors=allowed_behaviors,
+                    banter_context=banter_ctx,
+                )
+                speech = result.get("speech", "")
+                action = result.get("action", "")
+                thought = result.get("thought", "")
+
+                # 记录到对话历史
+                parts = [p for p in [speech, action] if p]
+                if parts:
+                    self.conversation_history.append(f"{responder}: {'  '.join(parts)}")
+                messages.append({
+                    "type": "chat",
+                    "role": responder,
+                    "speaker_name": char_display[responder],
+                    "speech": speech,
+                    "action": action,
+                    "thought": thought,
+                })
+
+                # 更新 last，为下一轮循环准备
+                last_speech = speech
+                last_character = responder
+
+            except Exception as e:
+                print(f"[LLM] {responder} banter 响应失败: {e}")
+                break
+
+        return messages
+
+    async def process_turn(self, player_input: str) -> List[Dict[str, Any]]:
+        """处理一个回合，返回要推送给前端的消息列表"""
+        self.turn += 1
+        self.storylet_turn_count += 1
+
+        messages: List[Dict[str, Any]] = []
+
+        # 记录玩家输入
+        self.conversation_history.append(f"玩家: {player_input}")
+
+        # ── 通知 Director 推进回合计数 ──
+        if self.director_agent:
+            try:
+                self.director_agent.advance_turn()
+            except Exception as e:
+                print(f"[Director] advance_turn 失败: {e}")
+
+        # ── 通知 LandmarkManager 推进回合计数 ──
+        self.landmark_manager.increment_turn_count()
+
+        # ── 玩家消息回显 ──
+        messages.append({
+            "type": "chat",
+            "role": "player",
+            "speech": player_input,
+        })
+
+        # ── 检测玩家调解行为 ──
+        self._check_player_mediation(player_input)
+
+        # ── Storylet 选择 ──
+        should_select = (
+            not self.current_storylet
+            or (not self.current_storylet.sticky and self._should_switch_storylet())
+        )
+        if should_select:
+            new_storylet = self.story_selector.select(
+                self.world_state, self.turn, player_input
+            )
+            if new_storylet:
+                switched = (
+                    not self.current_storylet
+                    or new_storylet.id != self.current_storylet.id
+                )
+                if switched:
+                    messages.append({
+                        "type": "chat",
+                        "role": "system",
+                        "speech": f"[Storylet] {new_storylet.title} — {new_storylet.narrative_goal[:40]}",
+                    })
+                self.current_storylet = new_storylet
+                self.storylet_turn_count = 0
+                self._apply_storylet_effects()
+                # 更新 Director 叙事目标
+                if new_storylet.narrative_goal and self.director_agent:
+                    try:
+                        self.director_agent.set_current_goal(new_storylet.narrative_goal)
+                    except Exception as e:
+                        print(f"[Director] set_current_goal 失败: {e}")
+                # 通知 LandmarkManager：本阶段又切换了一个 Storylet
+                self.landmark_manager.increment_storylet_count()
+
+        # ── 生成角色响应（基于当前 Storylet）──
+        if self.current_storylet:
+            # LLM 调用是同步的，用线程池避免阻塞事件循环
+            loop = asyncio.get_event_loop()
+            response_msgs = await loop.run_in_executor(
+                None,
+                partial(self._generate_storylet_response, self.current_storylet, player_input)
+            )
+            messages.extend(response_msgs)
+        else:
+            # 兜底：没有 Storylet 时的默认响应
+            messages.append({
+                "type": "chat",
+                "role": "narrator",
+                "speech": "三个人沉默着。空气凝固了一瞬。",
+            })
+
+        # ── 检查 Landmark 推进 ──
+        next_landmark_id = self.landmark_manager.check_progression(
+            self.world_state, player_input
+        )
+        if next_landmark_id:
+            self.landmark_manager.set_current(next_landmark_id, self.world_state)
+            next_landmark = self.landmark_manager.get_current()
+            if next_landmark:
+                messages.append({
+                    "type": "chat",
+                    "role": "system",
+                    "speech": f"[进入新阶段: {next_landmark.title}]",
+                })
+                if next_landmark.is_ending:
+                    messages.append({
+                        "type": "chat",
+                        "role": "narrator",
+                        "speech": next_landmark.ending_content or next_landmark.description,
+                    })
+                    self.game_ended = True
+
+        # ── 推送状态更新 ──
+        messages.append(self._get_state_snapshot())
+
+        return messages
+
+    def _check_player_mediation(self, player_input: str):
+        """检测玩家是否在坦白后做出调解行为"""
+        if not self.world_state.get_flag("secrets_revealed"):
+            return
+        if self.world_state.get_flag("player_mediated"):
+            return
+        mediation_keywords = [
+            "劝", "调解", "别吵", "好好说", "冷静", "和好", "谅解", "原谅",
+            "理解", "沟通", "一起", "说清楚", "好好谈", "没事的", "没关系",
+            "说开", "你们俩", "帮你们", "出面", "再给他一次机会",
+        ]
+        if any(kw in player_input for kw in mediation_keywords):
+            self.world_state.set_flag("player_mediated", True)
+
+    def _should_switch_storylet(self) -> bool:
+        if not self.current_storylet:
+            return True
+        storylet = self.current_storylet
+        # sticky Storylet 不会被切换，除非达到强制结束条件
+        if storylet.sticky:
+            return self._check_force_wrap_up()
+        completion = storylet.completion_trigger
+        if completion:
+            max_turns = completion.get("max_turns", 10)
+            if self.storylet_turn_count >= max_turns:
+                return True
+        if self.storylet_turn_count >= 5:
+            return True
+        return False
+
+    def _check_force_wrap_up(self) -> bool:
+        """检查是否应该强制结束当前 Storylet"""
+        if not self.current_storylet:
+            return False
+        force_wrap = self.current_storylet.force_wrap_up
+        if not force_wrap:
+            return False
+        max_turns = force_wrap.get("max_turns", 15)
+        if self.storylet_turn_count >= max_turns:
+            return True
+        conditions = force_wrap.get("conditions", [])
+        for condition in conditions:
+            if not self._evaluate_condition(condition):
+                return False
+        return True
+
+    def _evaluate_condition(self, condition: Dict) -> bool:
+        """评估单个条件"""
+        cond_type = condition.get("type")
+        if cond_type == "quality_check":
+            actual = self.world_state.get_quality(condition.get("key"))
+            return self._compare_values(actual, condition.get("op"), condition.get("value"))
+        elif cond_type == "flag_check":
+            actual = self.world_state.get_flag(condition.get("key"))
+            return self._compare_values(actual, condition.get("op"), condition.get("value"))
+        return True
+
+    def _apply_storylet_effects(self):
+        if not self.current_storylet:
+            return
+        # 应用普通效果
+        for effect in self.current_storylet.effects:
+            self.world_state.apply_effect(effect)
+        # 应用条件效果
+        for conditional_effect in self.current_storylet.conditional_effects:
+            if self._check_conditional_effect(conditional_effect):
+                for effect in conditional_effect.get("effects", []):
+                    self.world_state.apply_effect(effect)
+
+    def _check_conditional_effect(self, conditional_effect: Dict) -> bool:
+        """检查条件效果是否满足"""
+        conditions = conditional_effect.get("conditions", [])
+        if not conditions:
+            return True
+        for condition in conditions:
+            cond_type = condition.get("type")
+            if cond_type == "quality_check":
+                key = condition.get("key")
+                op = condition.get("op")
+                value = condition.get("value")
+                current = self.world_state.get_quality(key)
+                if not self._compare_values(current, op, value):
+                    return False
+            elif cond_type == "flag_check":
+                key = condition.get("key")
+                op = condition.get("op")
+                value = condition.get("value")
+                current = self.world_state.get_flag(key)
+                if not self._compare_values(current, op, value):
+                    return False
+            elif cond_type == "turn_range":
+                min_turn = condition.get("min_turn", 0)
+                max_turn = condition.get("max_turn", float('inf'))
+                if self.turn < min_turn or self.turn > max_turn:
+                    return False
+        return True
+
+    @staticmethod
+    def _compare_values(actual, op: str, expected) -> bool:
+        """比较值"""
+        if op == "==":
+            return actual == expected
+        elif op == "!=":
+            return actual != expected
+        elif op == ">":
+            return actual > expected
+        elif op == ">=":
+            return actual >= expected
+        elif op == "<":
+            return actual < expected
+        elif op == "<=":
+            return actual <= expected
+        return False
+
+    def apply_debug_worldstate(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Debug 面板修改 WorldState，然后检查 Storylet/Landmark 切换"""
+        messages: List[Dict[str, Any]] = []
+
+        # qualities
+        for k, v in data.get("qualities", {}).items():
+            self.world_state.set_quality(k, float(v))
+        # flags
+        for k, v in data.get("flags", {}).items():
+            self.world_state.set_flag(k, v)
+        # relationships
+        for k, v in data.get("relationships", {}).items():
+            self.world_state.set_relationship(k, float(v))
+
+        # ── 检查 Landmark 推进 ──
+        next_landmark_id = self.landmark_manager.check_progression(
+            self.world_state, ""
+        )
+        if next_landmark_id:
+            self.landmark_manager.set_current(next_landmark_id, self.world_state)
+            next_landmark = self.landmark_manager.get_current()
+            if next_landmark:
+                messages.append({
+                    "type": "chat",
+                    "role": "system",
+                    "speech": f"[Debug] 进入新阶段: {next_landmark.title}",
+                })
+                if next_landmark.is_ending:
+                    messages.append({
+                        "type": "chat",
+                        "role": "narrator",
+                        "speech": next_landmark.ending_content or next_landmark.description,
+                    })
+                    self.game_ended = True
+
+        # ── 检查 Storylet 切换 ──
+        new_storylet = self.story_selector.select(
+            self.world_state, self.turn, ""
+        )
+        if new_storylet and (not self.current_storylet or
+                            new_storylet.id != self.current_storylet.id):
+            self.current_storylet = new_storylet
+            self.storylet_turn_count = 0
+            self._apply_storylet_effects()
+            messages.append({
+                "type": "chat",
+                "role": "system",
+                "speech": f"[Debug] 切换 Storylet: {new_storylet.title}",
+            })
+
+        # 推送最终状态
+        messages.append(self._get_state_snapshot())
+        return messages
+
+    async def reset(self) -> List[Dict[str, Any]]:
+        """重置游戏 — 前端应重新发送 init_scene"""
+        self.turn = 0
+        self.game_ended = False
+        self.current_storylet = None
+        self.storylet_turn_count = 0
+        self.conversation_history = []
+        self.scene_loaded = False
+        return [
+            {
+                "type": "chat",
+                "role": "system",
+                "speech": "游戏已重置。请发送 init_scene 重新加载场景。",
+            },
+        ]
+
+
+# ── 开场消息（默认模板，仅作为 fallback）──
+def get_opening_messages(characters: List[Dict[str, Any]] = []) -> List[Dict[str, Any]]:
+    """根据角色配置生成简短开场氛围描述（不截取 identity 作为台词）"""
+    if not characters:
+        return [
+            {
+                "type": "chat",
+                "role": "system",
+                "speech": "[提示] 该项目尚未配置角色。请先在 Design 模式中添加角色。",
+            },
+        ]
+
+    # 收集非玩家角色名，用于旁白
+    char_names = []
+    for char_data in characters:
+        char_id = char_data.get("id", "")
+        if char_id == "player":
+            continue
+        name = char_data.get("name", char_id)
+        char_names.append(name)
+
+    if not char_names:
+        return [
+            {
+                "type": "chat",
+                "role": "narrator",
+                "speech": "故事开始了。",
+            },
+        ]
+
+    names_str = "、".join(char_names)
+    return [
+        {
+            "type": "chat",
+            "role": "narrator",
+            "speech": f"故事开始了。{names_str}在场。",
+        },
+    ]
+
+
+# ── WebSocket 端点 ──
+@app.websocket("/ws/play")
+async def websocket_play(ws: WebSocket):
+    await ws.accept()
+    print(f"[WS] 新连接")
+
+    # 不再立即创建 session，等前端发 init_scene
+    session: Optional[GameSession] = None
+
+    try:
+        while True:
+            raw = await ws.receive_text()
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                await ws.send_json({"type": "error", "message": "Invalid JSON"})
+                continue
+
+            msg_type = data.get("type")
+
+            if msg_type == "init_scene":
+                # ── 初始化场景（前端发来的完整场景数据）──
+                scene_data = data.get("data", {})
+                landmarks_count = len(scene_data.get("landmarks", []))
+                storylets_count = len(scene_data.get("storylets", []))
+                characters_count = len(scene_data.get("characters", []))
+                print(f"[WS] init_scene received: {landmarks_count} landmarks, {storylets_count} storylets, {characters_count} characters")
+                session = GameSession(ws)
+
+                messages = session.init_scene(scene_data)
+                if session.scene_loaded:
+                    # 发送开场消息
+                    characters = scene_data.get("characters", [])
+                    opening = get_opening_messages(characters)
+                    for i, msg in enumerate(opening):
+                        if i > 0:
+                            await asyncio.sleep(0.6)
+                        await ws.send_json(msg)
+                    await asyncio.sleep(0.3)
+                for msg in messages:
+                    await ws.send_json(msg)
+
+            elif msg_type == "player_input":
+                if session is None:
+                    await ws.send_json({"type": "error", "message": "Scene not initialized. Send init_scene first."})
+                    continue
+
+                player_text = data.get("text", "").strip()
+                if not player_text:
+                    continue
+                if session.game_ended:
+                    await ws.send_json({
+                        "type": "chat",
+                        "role": "system",
+                        "speech": "游戏已结束，请重置。",
+                    })
+                    continue
+
+                messages = await session.process_turn(player_text)
+                for msg in messages:
+                    await ws.send_json(msg)
+
+            elif msg_type == "debug_worldstate":
+                if session is None:
+                    await ws.send_json({"type": "error", "message": "Scene not initialized."})
+                    continue
+                messages = session.apply_debug_worldstate(data.get("data", {}))
+                for msg in messages:
+                    await ws.send_json(msg)
+
+            elif msg_type == "reset":
+                if session is None:
+                    await ws.send_json({"type": "error", "message": "Scene not initialized."})
+                    continue
+                messages = await session.reset()
+                for msg in messages:
+                    await ws.send_json(msg)
+
+            else:
+                await ws.send_json({"type": "error", "message": f"Unknown type: {msg_type}"})
+
+    except WebSocketDisconnect:
+        print("[WS] Client disconnected")
+    except Exception as e:
+        print(f"[WS] Error: {e}")
+        try:
+            await ws.send_json({"type": "error", "message": str(e)})
+        except:
+            pass
+
+
+# ── REST 端点（健康检查）──
+@app.get("/api/health")
+async def health():
+    return {"status": "ok"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    print("=" * 50)
+    print("FacadeRemake WebSocket Server")
+    print("ws://localhost:8000/ws/play")
+    print("=" * 50)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
