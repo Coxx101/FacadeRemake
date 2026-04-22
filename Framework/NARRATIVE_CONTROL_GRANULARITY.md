@@ -247,8 +247,10 @@
 │  层级 4: Input Parser（输入解析）                            │
 │  ─────────────────────────────────────────────────────────  │
 │  粒度：语义级                                                │
-│  控制：理解玩家意图，映射到世界状态变化                      │
-│  机制：intent + emotion + topic 提取                         │
+│  控制：输入合法性检查 + 语义条件匹配                         │
+│  机制：validate_input()（规则+LLM）+ analyze()（合法性+匹配）│
+│  · 不做结构化意图分类（CharacterAgent/Director 自行理解）    │
+│  · SemanticConditionStore 预留向量检索接口                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -438,37 +440,46 @@ MOTHER_BEHAVIORS = [
 
 ---
 
-#### 2.2.4 Input Parser 层 —— "理解玩家"
+#### 2.2.4 Input Parser 层 —— "玩家输入守门人"
 
 **类比**：DRAMA LLAMA 的自然语言理解
 
+InputParser 是玩家输入进入系统的统一入口，承担两大职责。**不再做结构化意图分类**（intent/target/topic_tags），因为 CharacterAgent 和 Director 会自行理解玩家原文。
+
 ```python
-# 输入解析输出格式
+# 职责 1：输入合法性检查（validate_input()）
+# 两层过滤：规则层（正则）→ LLM 语义判断
 {
-  "player_utterance": "爸，你刚才电话里说的老王是谁？",
-  
-  "intent": "probe_secret",           # 意图：探查秘密
-  "target": "father",                  # 目标：父亲
-  "emotion_signal": "suspicious",      # 情绪信号：怀疑
-  "topic_tags": ["phone", "money", "friend"],  # 话题标签
-  "sentiment": -0.2,                   # 情感倾向
-  
-  # 叙事动作映射（用于世界状态更新）
-  "narrative_action": {
-    "type": "confrontation",           # 对抗型行动
-    "intensity": 3,                    # 强度
-    "consequences": [
-      "father_deflection_count += 1",
-      "player_persistence += 1"
-    ]
-  }
+  "valid": True/False,
+  "severity": "soft" | "hard",   # soft: 角色困惑反应; hard: 忽略输入
+  "reason": str | None,
+  "response_mode": "confused" | "deflect" | "ignore" | None,
 }
+
+# 职责 2：语义条件匹配（analyze()）
+# 合法性检查 + Storylet llm_trigger + Landmark llm_semantic 合并为一次 LLM 调用
+{
+  "valid": True/False,
+  "severity": "soft" | "hard",
+  "reason": str | None,
+  "response_mode": str | None,
+  "matched_conditions": ["sl_push_trip", "lm2→lm3a"],  # 命中的条件 id
+}
+
+# 分发策略：
+# hard reject → 忽略输入（不生成角色响应）
+# soft reject → 角色困惑反应（注入 Director 指令）
+# valid       → 正常流程（matched_conditions 驱动下游选择）
 ```
 
+**剪枝策略**：只收集当前 Landmark 范围内的语义条件（Storylet `llm_trigger` + 出边 `llm_semantic`），通常 2~15 条，无需向量检索。
+
+**SemanticConditionStore**：条件索引接口。当前全量列表实现，`search()` 可替换为向量检索（cosine similarity top-k），上层 InputParser 无需改动。
+
 **控制粒度总结**：
-- **语义级**：理解玩家输入的意图和情绪
-- **映射**：将自由输入映射到有限的"叙事动作集"
-- **幻觉防范**：LLM 解析后需标准化输出
+- **语义级**：检查输入合法性 + 匹配语义条件
+- **不做结构化意图分类**：无下游消费者，CharacterAgent/Director 自行理解原文
+- **合并为一次 LLM 调用**：旧设计中每个 llm_trigger 单独调 LLM，现在 analyze() 统一完成
 
 ---
 
@@ -493,7 +504,7 @@ MOTHER_BEHAVIORS = [
 ┌────────────────────────────────────────────────────────────────┐
 │  借鉴来源              │  FacadeRemake 实现                     │
 ├────────────────────────────────────────────────────────────────┤
-│  DRAMA LLAMA          │  Storylet + 自然语言 llm_trigger       │
+│  DRAMA LLAMA          │  Storylet + 自然语言 llm_trigger（InputParser 统一匹配）│
 │  Dramamancer          │  Time-based fallback 机制              │
 │  IBSEN                │  Director-Actor 分离 + Objective Check │
 │  StoryVerse           │  Placeholder 占位符机制                │
@@ -519,7 +530,7 @@ MOTHER_BEHAVIORS = [
 |------|------------|--------------|
 | **叙事控制** | ABL 行为语言 + 手写规则 | LLM + Storylet 混合 |
 | **角色生成** | 手写对话树 + 模板 | LLM 自由生成 + Director 约束 |
-| **玩家输入** | 关键词匹配 | 自然语言理解 |
+| **玩家输入** | 关键词匹配 | 合法性检查 + 语义条件匹配（InputParser） |
 | **控制粒度** | 固定（Beat 级） | 可调节（粗→细） |
 | **可扩展性** | 低（需手写内容） | 高（Storylet 可动态添加） |
 
@@ -544,7 +555,7 @@ MOTHER_BEHAVIORS = [
 > 状态说明：✅ 已完成 | 🚧 进行中 | 📋 待做
 
 1. ✅ **实现三步生成架构**：`_generate_inner_thought()` → `_select_behavior()` → 台词生成，已在 `llm_client.py` 中完整实现
-2. ✅ **实现 `llm_trigger` 语义匹配**：`storylet.py._check_llm_trigger()` 已调用 LLM 判断玩家输入是否匹配触发条件
+2. ✅ **实现 `llm_trigger` 语义匹配**：已从 `storylet.py._check_llm_trigger()` 迁移到 `InputParser.analyze()`，与 Landmark `llm_semantic` 合并为一次 LLM 调用
 3. ✅ **实现 player_mediated 检测**：`main.py._check_player_mediation()` 检测 20 个调解关键词
 4. ✅ **实现角色行为库**：`data/character_behaviors.py` 已含 15 个行为，父亲/母亲各 10 个
 5. ✅ **实现 DRAMA LLAMA 发言决策**：`_decide_speakers()` 每轮由 LLM 自决发言角色
@@ -554,4 +565,4 @@ MOTHER_BEHAVIORS = [
 
 ---
 
-*文档版本：v0.3 | 最后更新：2026-04-07 | 状态：已更新至代码最新进度*
+> 最后更新：2026-04-23

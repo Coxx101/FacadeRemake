@@ -107,52 +107,6 @@ class LLMClient:
     
 
 
-class InputParser:
-    """输入解析器"""
-    def __init__(self, llm_client: LLMClient):
-        self.llm_client = llm_client
-    
-    def parse(self, player_input: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """解析玩家输入"""
-        # 构建 prompt
-        prompt = f"""解析玩家输入："{player_input}"
-
-当前情境：{context.get('situation', '老友做客，气氛微妙')}
-当前 Landmark：{context.get('landmark', 'lm_1_arrive')}
-
-请分析并返回 JSON 格式：
-{{
-    "intent": "意图类型（如 probe_relationship, express_concern, deflect 等）",
-    "target": "对话对象（trip/grace/both）",
-    "topic_tags": ["相关话题标签"],
-    "emotion_signal": "情绪信号（concerned/angry/neutral/suspicious 等）",
-    "sentiment": 0.0
-}}
-
-只返回 JSON，不要其他内容。"""
-
-        messages = [
-            {"role": "system", "content": "你是一个输入解析助手，负责将玩家自然语言转换为结构化数据。"},
-            {"role": "user", "content": prompt}
-        ]
-        
-        response = self.llm_client.chat_completion(messages)
-        
-        try:
-            # 尝试解析 JSON
-            result = json.loads(response)
-            result["player_utterance"] = player_input
-            return result
-        except json.JSONDecodeError:
-            # 解析失败，返回默认值
-            return {
-                "player_utterance": player_input,
-                "intent": "general_chat",
-                "target": "both",
-                "topic_tags": [],
-                "emotion_signal": "neutral",
-                "sentiment": 0.0
-            }
 
 
 class CharacterAgent:

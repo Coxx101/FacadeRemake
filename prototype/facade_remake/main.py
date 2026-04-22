@@ -10,7 +10,8 @@ from core.world_state import WorldState
 from core.storylet import StoryletManager
 from core.landmark import LandmarkManager
 from core.story_selector import StorySelector
-from agents.llm_client import LLMClient, InputParser, CharacterAgent
+from agents.llm_client import LLMClient, CharacterAgent
+from core.input_parser import InputParser as CoreInputParser, SemanticConditionStore
 from agents.director import DirectorAgent, create_director
 from data.default_storylets import DEFAULT_STORYLETS
 from data.default_landmarks import DEFAULT_LANDMARKS
@@ -28,7 +29,8 @@ class FacadeRemakeGame:
 
         # 初始化 LLM 客户端（必须在管理器之前）
         self.llm_client = LLMClient()
-        self.input_parser = InputParser(self.llm_client)
+        self.input_parser = CoreInputParser(llm_client=self.llm_client)
+        self.condition_store = SemanticConditionStore()
         
         # 加载角色配置
         try:
@@ -247,21 +249,21 @@ class FacadeRemakeGame:
 
     def _process_storylet_turn(self, player_input: str):
         """使用普通 Storylet 模式处理回合"""
-        # 1. 解析玩家输入
+        # 1. 解析玩家输入（合法性检查）
         context = {
             "situation": "家庭晚餐",
             "landmark": self.landmark_manager.current_landmark_id
         }
-        parsed_input = self.input_parser.parse(player_input, context)
+        analysis = self.input_parser.validate_input(player_input, context)
 
         if self.debug_mode:
-            print(f"\n[DEBUG] 输入解析: {parsed_input}")
+            print(f"\n[DEBUG] 输入分析: valid={analysis.get('valid')}, severity={analysis.get('severity')}")
 
         # 2. 检测玩家调解行为（Act3 中主动介入才能触发和解结局）
         self._check_player_mediation(player_input)
 
         # 3. 执行当前 Storylet（生成角色回应）
-        self._execute_storylet(player_input, parsed_input)
+        self._execute_storylet(player_input)
 
     def _check_player_mediation(self, player_input: str):
         """检测玩家是否在坦白后做出调解行为"""
@@ -281,8 +283,7 @@ class FacadeRemakeGame:
             if self.debug_mode:
                 print("[DEBUG] player_mediated → True（检测到玩家调解行为）")
     
-    def _decide_speakers(self, player_input: str, storylet_content: Dict,
-                          parsed_input: Dict = None) -> List[str]:
+    def _decide_speakers(self, player_input: str, storylet_content: Dict) -> List[str]:
         """DRAMA LLAMA 风格：让 LLM 决定本轮哪些角色应该回应，以及顺序。
 
         返回角色名列表，例如 ["grace"] 或 ["trip", "grace"]。
@@ -343,7 +344,7 @@ class FacadeRemakeGame:
         secondary = "trip" if primary == "grace" else "grace"
         return [primary, secondary]
 
-    def _execute_storylet(self, player_input: str, parsed_input: Dict = None):
+    def _execute_storylet(self, player_input: str):
         """执行 Storylet，生成角色回应（DRAMA LLAMA 风格：LLM 自决发言顺序）"""
         if not self.current_storylet:
             return
@@ -356,7 +357,7 @@ class FacadeRemakeGame:
             self.conversation_history.append(f"玩家: {player_input}")
 
         # DRAMA LLAMA：让 LLM 决定本轮谁说话
-        speakers = self._decide_speakers(player_input, content, parsed_input)
+        speakers = self._decide_speakers(player_input, content)
 
         for i, character in enumerate(speakers):
             # 第二个角色往后：让其知道前一个角色已经说话了

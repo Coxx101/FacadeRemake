@@ -208,7 +208,8 @@ class LandmarkManager:
 
     # ── 核心：检查 transitions ───────────────────────────────────
 
-    def check_progression(self, world_state, player_input: str = "") -> Optional[str]:
+    def check_progression(self, world_state, player_input: str = "",
+                          matched_semantic_ids: List[str] = None) -> Optional[str]:
         """
         检查当前 Landmark 是否应该跳转，返回目标 Landmark id；否则返回 None。
 
@@ -218,8 +219,15 @@ class LandmarkManager:
              a. 如果 transition 有 turn_limit 且当前阶段回合数已达到 → 触发
              b. 如果 transition 有 storylet_count 且已完成的 Storylet 数已达到 → 触发
              c. 如果 transition 的 conditions 全部满足 → 触发
+                - llm_semantic 类型条件：由 matched_semantic_ids 提供匹配结果
              d. 如果 transition 是 is_fallback=True 且前面没有分支触发 → 触发（兜底）
           3. 所有 transitions 都不满足 → 返回 None（继续当前阶段）
+
+        Args:
+            world_state: 世界状态
+            player_input: 玩家输入（用于 player_input_keyword 类型条件）
+            matched_semantic_ids: InputParser.analyze() 返回的命中条件 id 列表，
+                用于匹配 llm_semantic 类型的 transition 条件。
         """
         current = self.get_current()
         if not current or current.is_ending:
@@ -252,7 +260,7 @@ class LandmarkManager:
                     return transition.target_id
 
             # 世界状态条件触发
-            if transition.conditions and self._check_conditions(transition.conditions, world_state, player_input):
+            if transition.conditions and self._check_conditions(transition.conditions, world_state, player_input, matched_semantic_ids):
                 return transition.target_id
 
         # 所有精确分支都不满足，使用兜底
@@ -263,8 +271,16 @@ class LandmarkManager:
 
         return None
 
-    def _check_conditions(self, conditions: List[Dict], world_state, player_input: str) -> bool:
-        """检查一组条件（AND 关系），全部满足返回 True"""
+    def _check_conditions(self, conditions: List[Dict], world_state, player_input: str,
+                           matched_semantic_ids: List[str] = None) -> bool:
+        """检查一组条件（AND 关系），全部满足返回 True
+
+        支持的条件类型：
+          - flag_check: 世界状态 flag 检查
+          - quality_check: 世界状态 quality 检查
+          - player_input_keyword: 简单关键词匹配（轻量级，不需要 LLM）
+          - llm_semantic: 语义匹配（由外部 InputParser 提供匹配结果）
+        """
         for cond in conditions:
             cond_type = cond.get("type")
             key = cond.get("key")
@@ -276,10 +292,19 @@ class LandmarkManager:
             elif cond_type == "quality_check":
                 current_val = world_state.get_quality(key)
             elif cond_type == "player_input_keyword":
-                # 简单关键词匹配（语义匹配可后续接 LLM）
+                # 简单关键词匹配（轻量级，不需要 LLM）
                 keywords = value if isinstance(value, list) else [value]
                 if not any(kw in player_input for kw in keywords):
                     return False
+                continue
+            elif cond_type == "llm_semantic":
+                # 语义匹配：由外部 InputParser.analyze() 提供匹配结果
+                cond_id = cond.get("id", "")
+                if matched_semantic_ids is not None:
+                    # 新模式：必须出现在 matched_semantic_ids 中
+                    if cond_id and cond_id not in matched_semantic_ids:
+                        return False
+                # matched_semantic_ids 为 None 时（兼容旧调用），保守放行
                 continue
             else:
                 continue

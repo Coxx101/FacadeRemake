@@ -19,6 +19,7 @@ from facade_remake.core.world_state import WorldState
 from facade_remake.core.storylet import StoryletManager
 from facade_remake.core.landmark import LandmarkManager
 from facade_remake.core.story_selector import StorySelector
+from facade_remake.core.input_parser import InputParser, SemanticCondition, SemanticConditionStore
 
 
 app = FastAPI(title="FacadeRemake WebSocket")
@@ -61,6 +62,8 @@ class GameSession:
             self.landmark_manager,
             llm_client=self.llm_client,
         )
+        self.input_parser = InputParser(llm_client=self.llm_client)
+        self.condition_store = SemanticConditionStore()
 
         # 当前 Storylet
         self.current_storylet = None
@@ -292,6 +295,72 @@ class GameSession:
             "game_ended": self.game_ended,
         }
 
+    def _collect_semantic_conditions(self) -> List[SemanticCondition]:
+        """收集当前阶段需要做语义匹配的条件。
+
+        剪枝策略：只取当前 Landmark 内的 Storylet + 出边 transition。
+        通常 2~15 条，全量 LLM 判断即可。
+        """
+        conditions = []
+        current_landmark = self.landmark_manager.get_current()
+        if not current_landmark:
+            return conditions
+
+        allowed_tags = current_landmark.get_allowed_tags()
+
+        # 1. 当前阶段候选 Storylet 的 llm_trigger
+        for storylet in self.storylet_manager.storylets.values():
+            if not storylet.llm_trigger:
+                continue
+            # 标签过滤
+            if allowed_tags:
+                if not any(tag in storylet.phase_tags for tag in allowed_tags):
+                    continue
+            # 结构性条件过滤（flag/quality/cooldown）
+            if not storylet.can_trigger(self.world_state, self.turn):
+                continue
+            conditions.append(SemanticCondition(
+                id=storylet.id,
+                source_type="storylet",
+                description=storylet.llm_trigger,
+            ))
+
+        # 2. 当前 Landmark 出边 transition 的 llm_semantic 条件
+        for transition in current_landmark.transitions:
+            for cond in transition.conditions:
+                if cond.get("type") == "llm_semantic":
+                    cond_id = cond.get("id", f"{current_landmark.id}→{transition.target_id}")
+                    conditions.append(SemanticCondition(
+                        id=cond_id,
+                        source_type="landmark_transition",
+                        description=cond.get("description", ""),
+                        metadata={"transition_target": transition.target_id},
+                    ))
+
+        return conditions
+
+    def _handle_invalid_input(self, analysis: Dict) -> List[Dict[str, Any]]:
+        """处理非法输入，生成角色困惑/回避反应"""
+        messages = []
+        response_mode = analysis.get("response_mode", "confused")
+        reason = analysis.get("reason", "")
+
+        if response_mode == "ignore":
+            messages.append({
+                "type": "chat",
+                "role": "system",
+                "speech": f"[输入被忽略]",
+            })
+        elif response_mode in ("confused", "deflect"):
+            # 角色用困惑的方式反应
+            messages.append({
+                "type": "chat",
+                "role": "narrator",
+                "speech": "空气突然安静了一下。Trip 和 Grace 交换了一个不解的眼神。",
+            })
+
+        return messages
+
     def _decide_speakers(self, player_input: str, storylet_content: Dict) -> List[str]:
         """委托 DirectorAgent 决定本轮哪些角色回应及顺序。
 
@@ -317,7 +386,8 @@ class GameSession:
             return mentioned
         return ["trip", "grace"]
 
-    def _generate_storylet_response(self, storylet, player_input: str) -> List[Dict[str, Any]]:
+    def _generate_storylet_response(self, storylet, player_input: str,
+                                     director_extra: str = "") -> List[Dict[str, Any]]:
         """根据当前 Storylet 生成响应消息（LLM 驱动，含角色间对话循环）"""
         content = storylet.content
 
@@ -366,6 +436,9 @@ class GameSession:
                         character, sl_content, world_state_dict,
                         self.conversation_history, use_llm=True
                     )
+                    # 注入 InputParser 的额外提示（如 soft 违规提示）
+                    if director_extra:
+                        director_instruction = director_instruction + "\n" + director_extra if director_instruction else director_extra
                 except Exception as e:
                     print(f"[Director] 指令生成失败（{character}）: {e}")
 
@@ -525,17 +598,36 @@ class GameSession:
             "speech": player_input,
         })
 
+        # ── InputParser：合法性检查 + 语义条件匹配 ──
+        semantic_conditions = self._collect_semantic_conditions()
+        analysis_context = {
+            "situation": "老友做客，气氛微妙",
+            "storylet_title": self.current_storylet.title if self.current_storylet else "",
+        }
+        analysis = self.input_parser.analyze(player_input, semantic_conditions, analysis_context)
+
+        matched_semantic_ids = analysis.get("matched_conditions", [])
+        print(f"[InputParser] valid={analysis.get('valid')}, matched={matched_semantic_ids}")
+
+        # ── 非法输入处理 ──
+        if not analysis.get("valid", True):
+            invalid_msgs = self._handle_invalid_input(analysis)
+            messages.extend(invalid_msgs)
+            messages.append(self._get_state_snapshot())
+            return messages
+
         # ── 检测玩家调解行为 ──
         self._check_player_mediation(player_input)
 
-        # ── Storylet 选择 ──
+        # ── Storylet 选择（传入 matched_semantic_ids）──
         should_select = (
             not self.current_storylet
             or (not self.current_storylet.sticky and self._should_switch_storylet())
         )
         if should_select:
             new_storylet = self.story_selector.select(
-                self.world_state, self.turn, player_input
+                self.world_state, self.turn,
+                matched_semantic_ids=matched_semantic_ids,
             )
             if new_storylet:
                 switched = (
@@ -562,11 +654,16 @@ class GameSession:
 
         # ── 生成角色响应（基于当前 Storylet）──
         if self.current_storylet:
+            # 如果 InputParser 检测到 soft 违规，给 Director 注入提示
+            director_extra = ""
+            if analysis.get("severity") == "soft" and analysis.get("response_mode") == "confused":
+                director_extra = "\n（玩家的话有点奇怪，角色可以用困惑或转移话题的方式反应。）"
+
             # LLM 调用是同步的，用线程池避免阻塞事件循环
             loop = asyncio.get_event_loop()
             response_msgs = await loop.run_in_executor(
                 None,
-                partial(self._generate_storylet_response, self.current_storylet, player_input)
+                partial(self._generate_storylet_response, self.current_storylet, player_input, director_extra)
             )
             messages.extend(response_msgs)
         else:
@@ -577,9 +674,10 @@ class GameSession:
                 "speech": "三个人沉默着。空气凝固了一瞬。",
             })
 
-        # ── 检查 Landmark 推进 ──
+        # ── 检查 Landmark 推进（传入 matched_semantic_ids）──
         next_landmark_id = self.landmark_manager.check_progression(
-            self.world_state, player_input
+            self.world_state, player_input,
+            matched_semantic_ids=matched_semantic_ids,
         )
         if next_landmark_id:
             self.landmark_manager.set_current(next_landmark_id, self.world_state)

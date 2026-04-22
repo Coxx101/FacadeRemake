@@ -1,7 +1,7 @@
 # FacadeRemake — 剧情自适应系统 架构框架 v0.3
 
 > 基于现代 LLM + Agent 技术复刻 Facade 核心体验的设计框架。
-> 最后更新：2026-04-07
+> 最后更新：2026-04-23
 > **当前状态**：核心原型已实现并可运行（`prototype/facade_remake/`），本文档记录已实现架构与待扩展方向。
 
 ---
@@ -40,10 +40,13 @@
 │         │                                                       │
 │         ▼                                                       │
 │  ┌─────────────────────┐                                        │
-│  │   输入解析模块        │  ← LLM 解析意图、情绪、话题               │
-│  │  (Input Parser)     │    将自然语言 → 结构化世界事件          │
+│  │   输入解析模块        │  ← 合法性检查 + 语义条件匹配           │
+│  │  (Input Parser)     │    validate_input() + analyze()         │
+│  │  + SemanticCondition │    统一一次 LLM 调用                    │
+│  │    Store             │    硬/软拒绝 → 忽略/角色困惑反应        │
 │  └──────────┬──────────┘                                        │
-│             │ 更新世界状态                                       │
+│             │ matched_semantic_ids 驱动 Storylet 选择            │
+│             │ + Landmark 推进                                    │
 │             ▼                                                   │
 │  ┌─────────────────────┐    ┌────────────────────────┐          │
 │  │   世界状态模型        │◄──►│  角色行为库              │          │
@@ -82,24 +85,26 @@
 
 ### 3.1 输入解析模块（Input Parser）
 
-**职责**：把玩家的自由文本转换为系统能理解的结构化信息。
+**职责**：玩家输入的守门人，不做结构化意图分类（CharacterAgent/Director 自行理解原文）。
 
-**输出格式**（示例）：
-```json
-{
-  "player_utterance": "我觉得你们之间好像有什么秘密瞒着我",
-  "intent": "probe_secret",
-  "target": "Trip",
-  "emotion_signal": "suspicious",
-  "topic_tags": ["secret", "relationship", "trust"],
-  "sentiment": -0.3
-}
+**两大方法**：
+- `validate_input()`：规则层（正则过滤 meta/暴力/超长）+ LLM 语义合法性判断
+- `analyze()`：合并合法性检查与语义条件匹配（Storylet `llm_trigger` + Landmark `llm_semantic`），**一次 LLM 调用**
+
+**分发逻辑**：
+```
+hard reject → 忽略输入（不生成角色响应）
+soft reject → 角色困惑反应（注入 Director 指令）
+valid       → 正常流程（matched_semantic_ids 驱动下游选择）
 ```
 
+**剪枝策略**：只收集当前 Landmark 范围内的语义条件（Storylet `llm_trigger` + 出边 `llm_semantic`），通常 2~15 条。
+
+**SemanticConditionStore**：条件索引接口，当前全量列表实现，`search()` 可替换为向量检索，上层代码无需改动。
+
 **设计要点**：
-- 用 LLM 做语义理解，不要 hardcode 关键词匹配
-- 输出需要标准化，便于 World State 更新
-- 要能识别"敏感话题"（触发 Landmark 的关键输入）
+- 不再做结构化意图分类（intent/target/topic_tags），因为无下游消费者
+- 旧设计中每个 `llm_trigger` Storylet 单独调 LLM，现在合并为 1 次
 - 参考 DRAMALLLAMA 的自然语言 precondition 判断方式
 
 ---
@@ -374,16 +379,11 @@ Landmark 5c: 结局 — Grace 做出决定
 玩家输入 "你们之间到底发生了什么"
          │
          ▼
-    [Input Parser] ── LLM 解析
-    → intent: probe_relationship
-    → topic: marriage_problem
-    → emotion: concerned
+    [Input Parser] ── analyze()
+    → valid: true
+    → matched_semantic_ids: ["sl_first_crack", "lm1→lm2"]
          │
-         ▼ 更新 World State
-    grace_trust += 0.5
-    story_probe_count += 1
-         │
-         ▼
+         ▼ matched_semantic_ids 驱动选择
     [Story Selector]
     候选集: [sl_grace_evasion, sl_trip_deflects, sl_first_crack]
     Salience 评分后 → 选中: sl_first_crack (Grace 第一次裂缝)
@@ -399,6 +399,10 @@ Landmark 5c: 结局 — Grace 做出决定
          │
          ▼
     执行 Effects: secret_hinted=true, relationship_crisis_level += 0.3
+         │
+         ▼
+    [Landmark 推进检查]
+    matched_semantic_ids 含 "lm1→lm2" → 满足 llm_semantic 条件 → 推进
          │
          ▼
     输出给玩家（文字/语音/动画）

@@ -66,7 +66,7 @@ class Storylet:
         
         return score
     
-    def can_trigger(self, world_state, current_turn: int, player_input: str = "") -> bool:
+    def can_trigger(self, world_state, current_turn: int) -> bool:
         """检查是否可以触发"""
         # 检查重复性
         if self.repeatability == "never" and self.times_triggered > 0:
@@ -122,7 +122,7 @@ class StoryletManager:
     """Storylet 管理器"""
     def __init__(self, llm_client=None):
         self.storylets: Dict[str, Storylet] = {}
-        self.llm_client = llm_client  # LLM 客户端（用于语义匹配）
+        self.llm_client = llm_client  # 保留引用（兼容），但语义匹配已移至 InputParser
     
     def register(self, storylet: Storylet):
         """注册一个 Storylet"""
@@ -133,8 +133,18 @@ class StoryletManager:
         return self.storylets.get(storylet_id)
     
     def get_candidates(self, world_state, current_turn: int,
-                       allowed_tags: List[str] = None, player_input: str = "") -> List[Storylet]:
-        """获取候选 Storylets"""
+                       allowed_tags: List[str] = None,
+                       matched_semantic_ids: List[str] = None) -> List[Storylet]:
+        """获取候选 Storylets。
+
+        Args:
+            world_state: 世界状态
+            current_turn: 当前回合
+            allowed_tags: Landmark 阶段标签约束
+            matched_semantic_ids: InputParser.analyze() 返回的命中条件 id 列表。
+                有 llm_trigger 的 Storylet 必须出现在此列表中才算候选。
+                如果为 None，则跳过语义检查（兼容旧调用方式）。
+        """
         candidates = []
 
         for storylet in self.storylets.values():
@@ -144,73 +154,20 @@ class StoryletManager:
                     continue
 
             # 检查结构性触发条件（flag / quality / cooldown）
-            if not storylet.can_trigger(world_state, current_turn, player_input):
+            if not storylet.can_trigger(world_state, current_turn):
                 continue
 
-            # 如果有 llm_trigger，进行语义匹配
+            # 如果有 llm_trigger，必须由 InputParser 的语义匹配结果确认
             if storylet.llm_trigger:
-                if player_input:
-                    # 有玩家输入时才做语义判断
-                    if self._check_llm_trigger(storylet.llm_trigger, player_input, world_state):
-                        candidates.append(storylet)
-                    # 无玩家输入时跳过（需要玩家说了什么才能匹配）
-                else:
-                    # 没有玩家输入时跳过 llm_trigger storylet，等待玩家发言
-                    pass
-            else:
-                candidates.append(storylet)
+                if matched_semantic_ids is not None:
+                    # 新模式：必须出现在 matched_semantic_ids 中
+                    if storylet.id not in matched_semantic_ids:
+                        continue
+                # matched_semantic_ids 为 None 时（兼容旧调用），保守放行
+
+            candidates.append(storylet)
 
         return candidates
-
-    def _check_llm_trigger(self, trigger_condition: str, player_input: str,
-                            world_state=None) -> bool:
-        """
-        使用 LLM 检查语义触发条件（DRAMA LLAMA 设计）
-        返回 True 如果玩家输入满足触发条件
-
-        Args:
-            trigger_condition: 自然语言描述的触发条件
-            player_input: 玩家的输入文本
-            world_state: 当前世界状态（用于提供上下文）
-        """
-        if not self.llm_client:
-            # 没有 LLM 客户端时保守放行（避免 llm_trigger 永远沉默）
-            print(f"[llm_trigger] 无 LLM 客户端，保守放行: '{trigger_condition[:30]}...'")
-            return True
-
-        # 构建世界状态摘要
-        state_summary = ""
-        if world_state is not None:
-            try:
-                tension = world_state.get_quality("marriage_tension", 0)
-                secret_exposed = world_state.get_flag("secret_exposed")
-                state_summary = (
-                    f"当前世界状态：婚姻紧张度={tension}，"
-                    f"秘密是否揭露={'是' if secret_exposed else '否'}"
-                )
-            except Exception:
-                state_summary = ""
-
-        prompt = f"""你是一个叙事系统的触发条件判断器。
-
-{f'故事背景：{state_summary}' if state_summary else ''}
-触发条件：{trigger_condition}
-玩家输入："{player_input}"
-
-请判断：玩家的输入是否符合触发条件？
-
-只回答 YES 或 NO，不要有其他内容。"""
-
-        try:
-            response = self.llm_client.call_llm(prompt, max_tokens=5, temperature=0.0)
-            result = response.strip().upper()
-            matched = "YES" in result
-            print(f"[llm_trigger] 条件='{trigger_condition[:40]}' | 输入='{player_input[:30]}' | 结果={result} → {'✓ 匹配' if matched else '✗ 跳过'}")
-            return matched
-        except Exception as e:
-            # LLM 调用失败，保守放行
-            print(f"[llm_trigger] 调用失败（{e}），保守放行")
-            return True
     
     def load_from_dicts(self, data_list: List[Dict[str, Any]]):
         """从字典列表加载 Storylets"""

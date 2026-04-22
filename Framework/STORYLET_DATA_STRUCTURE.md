@@ -1,7 +1,7 @@
 # Storylet 数据结构详解 v0.3
 
 > 基于 FacadeRemake 架构框架，详细拆解 Storylet 的每个字段设计。
-> 最后更新：2026-04-07 | 状态：与原型代码同步
+> 最后更新：2026-04-23 | 状态：与原型代码同步
 
 ---
 
@@ -96,10 +96,15 @@
 二者是 **AND 关系**：
 
 ```
-进入候选池的条件 = conditions 全部通过 AND llm_trigger 判断为 true
+进入候选池的条件 = conditions 全部通过 AND llm_trigger 在 matched_semantic_ids 中
 ```
 
 > `llm_trigger` 是可选字段。对于不需要语义匹配的 Storylet（比如 Landmark 强制触发的），可以留空。
+
+**实现方式**（2026-04-23 重构）：
+- `llm_trigger` 的匹配由 `InputParser.analyze()` 统一完成，不再单独调用 LLM
+- 有 `llm_trigger` 的 Storylet 必须出现在 `matched_semantic_ids` 中才可进入候选池
+- 旧设计中每个 `llm_trigger` Storylet 单独调一次 LLM，现在合并为 1 次
 
 ---
 
@@ -403,7 +408,7 @@ Step B: generate_response()        ← 台词/动作生成（temperature=0.6）
 
 ```
 conditions          → 我能被触发吗？（规则门槛）
-llm_trigger         → 这个时机对吗？（语义匹配，开始判断）
+llm_trigger         → 这个时机对吗？（语义匹配，由 InputParser.analyze() 统一判断）
 salience            → 我有多想被触发？（竞争优先级）
 content             → 我被触发后干什么？（导演指令）
 effects             → 我执行完后改变了什么？（世界状态更新）
@@ -426,10 +431,10 @@ force_wrap_up       → 超时了怎么收尾？（兜底机制）
 | **作用时机** | Storylet 开始前 | Storylet 执行中，每轮检查 |
 | **判断对象** | 玩家输入 + 世界状态 | 当前对话历史 + 叙事目标 |
 | **设计目的** | 选不选这个 Storylet | 什么时候结束这个 Storylet |
-| **性能开销** | 每次选择候选集时调用 | 每轮对话后调用（可优化） |
+| **性能开销** | 由 InputParser.analyze() 统一调用（与其他 llm_trigger 合并为 1 次 LLM 调用） | 每轮对话后调用（可优化） |
 
 **优化建议**：`completion_trigger` 的 LLM 检查可以用轻量级模型（如 GPT-3.5），或者只在关键 Storylet 上启用。
 
 ---
 
-*文档版本：v0.1 | 日期：2026-03-23 | 状态：草稿，待讨论*
+*文档版本：v0.2 | 日期：2026-04-23 | 状态：与原型代码同步*

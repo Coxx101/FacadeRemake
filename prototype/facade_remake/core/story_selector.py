@@ -21,7 +21,7 @@ class StorySelector:
         self.llm_client = llm_client  # LLM 客户端（用于评估器）
     
     def select(self, world_state: WorldState, current_turn: int,
-               player_input: str = "") -> Optional[Storylet]:
+               player_input: str = "", matched_semantic_ids: List[str] = None) -> Optional[Storylet]:
         """
         三层过滤选择 Storylet：
         1. 条件过滤
@@ -36,7 +36,8 @@ class StorySelector:
         
         # Step 2: 条件过滤 + Landmark 约束
         candidates = self.storylet_manager.get_candidates(
-            world_state, current_turn, allowed_tags, player_input
+            world_state, current_turn, allowed_tags,
+            matched_semantic_ids=matched_semantic_ids,
         )
         
         if not candidates:
