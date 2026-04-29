@@ -2,6 +2,11 @@
 依赖注入容器 - 集中管理所有模块实例，消除循环依赖
 """
 from typing import Optional
+import sys
+import os
+
+# 添加 facade_remake 目录到路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.scenario_schema import ScenarioConfig
 
@@ -183,5 +188,11 @@ class DIContainer:
             self.landmark_manager.load_from_dicts(landmarks)
 
     def configure_scenario(self, scenario_config: ScenarioConfig):
-        """配置场景"""
+        """配置场景，并清除依赖 scenario_config 的缓存单例"""
         self._scenario_config = scenario_config
+        # 清除依赖 scenario_config 的已缓存单例，让它们下次访问时用新配置重建
+        self._trip_agent = None
+        self._grace_agent = None
+        self._director = None
+        self._input_parser = None
+        self._story_selector = None

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* ── 字体引入 ── */
+@import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
+
 /* ── Tailwind v4 @theme 扩展 ── */
 @theme {
   --color-bg-primary: #0f1117;
@@ -20,24 +23,45 @@
   --color-accent-orange: #e67e22;
 }
 
-/* ── CSS 自定义属性（兼容非 Tailwind 场景） ── */
+/* ── FacadeRemake Day Mode Theme ── */
 :root {
+  --bg-page:        #f5f4f0;
+  --bg-panel:       #ffffff;
+  --bg-surface:     #f0ede8;
+  --bg-stage:       #e8e4dd;
+  --bg-input:       #ffffff;
+  --border:         #d4cec5;
+  --border-light:   #ece9e4;
+  --text:           #1a1814;
+  --text-muted:     #6b655c;
+  --text-dim:       #9e9690;
+  --trip-color:     #c0392b;
+  --grace-color:    #2563a8;
+  --player-color:   #1a6b40;
+  --narrator-color: #6b5c3e;
+  --accent:         #4a6fa5;
+  --accent-hover:   #3a5f95;
+  --good:           #218a45;
+  --warn:           #b8860b;
+  --danger:         #c0392b;
+  --storylet-tag:   #7b3fa0;
+  --landmark-tag:   #2563a8;
+  --shadow-sm:      0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md:      0 2px 8px rgba(0,0,0,0.12);
+  
+  /* 深色主题兼容变量 */
   --bg-primary: #0f1117;
   --bg-secondary: #1a1d27;
   --bg-card: #1e2130;
   --bg-hover: #252840;
-  --bg-input: #131828;
   --border-default: #2e3250;
   --border-active: #4f6ef7;
   --text-primary: #e8eaf0;
   --text-secondary: #8891b0;
-  --text-muted: #4a5070;
   --accent-blue: #4f6ef7;
   --accent-gold: #f5a623;
   --accent-green: #2ecc71;
   --accent-red: #e74c3c;
-  --accent-yellow: #f1c40f;
-  --accent-orange: #e67e22;
 }
 
 * {
@@ -134,11 +158,32 @@ button:focus-visible {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-default);
+  background: var(--border);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) var(--bg-surface);
+}
+
+/* ── Play 模式动画 ── */
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+  30%           { transform: translateY(-4px); opacity: 0.8; }
+}
+
+@keyframes speakingPulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50%      { transform: scale(1.4); opacity: 1; }
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Play 模式按钮 hover 过渡（仅做 transition 基础） ── */

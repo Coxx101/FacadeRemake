@@ -119,6 +119,7 @@ export interface PlayStoreState {
   isLoading: boolean
   gameEnded: boolean
   connected: boolean // WebSocket 连接状态
+  connecting: boolean // WebSocket 正在连接中
   debugLogs: LlmDebugEntry[]
   clearDebugLogs: () => void
 
@@ -147,63 +148,159 @@ function uid() { return `msg_${Date.now()}_${msgCounter++}` }
 
 const WS_URL = 'ws://localhost:8000/ws/play'
 
-// ── WebSocket 单例 ──────────────────────────────────────────────────────────
+// ── WebSocket 单例管理 ──────────────────────────────────────────────────────
 let wsInstance: WebSocket | null = null
 let wsMessageHandler: ((data: WsIncomingMessage) => void) | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let reconnectAttempts = 0
+let intentionalClose = false
+const MAX_RECONNECT = 5
+const BASE_DELAY = 3000
+
+// 缓存待发送的场景数据（用于连接建立后自动发送）
+let pendingSceneData: any = null
+
+// 开发环境下暴露调试接口
+if (process.env.NODE_ENV === 'development') {
+  ;(window as any).__WS_DEBUG__ = {
+    getWsInstance: () => wsInstance,
+    getPendingSceneData: () => pendingSceneData,
+    getReconnectAttempts: () => reconnectAttempts,
+    forceConnect: () => {
+      if (wsInstance) {
+        wsInstance.close()
+      }
+      reconnectAttempts = 0
+      pendingSceneData = null
+    },
+  }
+}
+
+// 延迟导出 store 实例以便调试（在文件末尾定义）
+let playStoreInstance: typeof usePlayStore | null = null
+
+function getReconnectDelay(): number {
+  return Math.min(BASE_DELAY * Math.pow(2, reconnectAttempts), 60000)
+}
 
 function getWs(
   storeHandler: (data: WsIncomingMessage) => void,
-  onStateChange: (connected: boolean) => void,
+  onStateChange: (connected: boolean, connecting: boolean) => void,
 ): WebSocket {
-  if (wsInstance && wsInstance.readyState === WebSocket.OPEN) {
-    wsMessageHandler = storeHandler
-    return wsInstance
-  }
-
-  // 清理旧连接
+  // 如果已有连接且状态正常，更新 handler 后返回
   if (wsInstance) {
-    wsInstance.onclose = null
-    wsInstance.close()
+    if (wsInstance.readyState === WebSocket.OPEN) {
+      wsMessageHandler = storeHandler
+      return wsInstance
+    }
+    // 如果正在连接中，等待连接完成，更新 handler
+    if (wsInstance.readyState === WebSocket.CONNECTING) {
+      wsMessageHandler = storeHandler
+      return wsInstance
+    }
+    // 否则清理无效连接
+    safeCloseWs()
   }
 
   wsMessageHandler = storeHandler
   wsInstance = new WebSocket(WS_URL)
 
+  onStateChange(false, true)
+
   wsInstance.onopen = () => {
-    console.log('[WS] Connected')
-    onStateChange(true)
-    // 不在此处自动 sendInitScene，由 PlayMode 组件在数据就绪后显式调用
-  }
+        console.log('[WS] ✅ Connected to', WS_URL)
+        reconnectAttempts = 0
+        onStateChange(true, false)
+        // 如果有缓存的场景数据，立即发送
+        if (pendingSceneData) {
+          console.log('[WS] 📤 Sending cached init_scene...')
+          const jsonStr = JSON.stringify({ type: 'init_scene', data: pendingSceneData })
+          wsInstance?.send(jsonStr)
+          console.log(`[WS] 📤 init_scene sent (from cache): ${pendingSceneData.landmarks.length} landmarks, ${pendingSceneData.storylets.length} storylets, ${pendingSceneData.characters.length} characters`)
+          pendingSceneData = null
+        }
+      }
 
   wsInstance.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data) as WsIncomingMessage
       if (data.type === 'llm_debug') {
-        console.log('[WS] ✅ 收到 llm_debug:', data.event, data)
+        console.debug('[WS] 📝 LLM Debug:', data.event)
       }
-      wsMessageHandler?.(data)
+      if (!wsMessageHandler) {
+        console.warn('[WS] ⚠️ onmessage fired but wsMessageHandler is null — message dropped:', data.type)
+      } else {
+        wsMessageHandler(data)
+      }
     } catch (e) {
-      console.error('[WS] Parse error:', e)
+      console.error('[WS] ❌ Parse error:', e)
     }
   }
 
-  wsInstance.onclose = () => {
-    console.log('[WS] Disconnected')
-    onStateChange(false)
-    // 自动重连（3秒后）
+  wsInstance.onclose = (event) => {
+    console.log(`[WS] 🚪 Disconnected (code: ${event.code}, reason: ${event.reason})`)
+    onStateChange(false, false)
+
+    if (intentionalClose) {
+      intentionalClose = false
+      return
+    }
+
+    if (reconnectAttempts >= MAX_RECONNECT) {
+      console.warn(`[WS] ⚠️ 已达最大重连次数 (${MAX_RECONNECT})，停止重连`)
+      return
+    }
+
+    const delay = getReconnectDelay()
+    reconnectAttempts++
+    console.log(`[WS] 🔄 ${delay / 1000}s 后重连 (第 ${reconnectAttempts}/${MAX_RECONNECT} 次)...`)
+
     reconnectTimer = setTimeout(() => {
-      console.log('[WS] Reconnecting...')
       getWs(storeHandler, onStateChange)
-    }, 3000)
+    }, delay)
   }
 
-  wsInstance.onerror = (e) => {
-    console.error('[WS] Error:', e)
-    onStateChange(false)
+  wsInstance.onerror = (error) => {
+    console.error('[WS] ❌ Error:', error)
+    onStateChange(false, false)
   }
 
   return wsInstance
+}
+
+function safeCloseWs(): void {
+  if (!wsInstance) return
+
+  // 如果正在连接中，等待连接失败或成功后再关闭
+  if (wsInstance.readyState === WebSocket.CONNECTING) {
+    const closeOnOpen = () => {
+      wsInstance?.removeEventListener('open', closeOnOpen)
+      wsInstance?.removeEventListener('close', closeOnOpen)
+      safeCloseWs()
+    }
+    wsInstance.addEventListener('open', closeOnOpen)
+    wsInstance.addEventListener('close', closeOnOpen)
+    return
+  }
+
+  wsInstance.onclose = null
+  try {
+    wsInstance.close()
+  } catch (e) {
+    console.warn('[WS] Error closing socket:', e)
+  }
+  wsInstance = null
+}
+
+function closeWs(): void {
+  intentionalClose = true
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  safeCloseWs()
+  wsMessageHandler = null
+  reconnectAttempts = 0
 }
 
 /** 从 useStore 读取当前编辑器数据，发送 init_scene 给后端 */
@@ -215,23 +312,16 @@ export function sendInitScene() {
     characters: state.characters,
     world_state_definition: state.worldStateDefinition,
   }
+
+  // 始终先缓存，确保 onopen 时一定能拿到
+  pendingSceneData = sceneData
+
+  // 如果连接已打开，直接发送
   if (wsInstance && wsInstance.readyState === WebSocket.OPEN) {
     wsInstance.send(JSON.stringify({ type: 'init_scene', data: sceneData }))
-    console.log(`[WS] init_scene sent: ${sceneData.landmarks.length} landmarks, ${sceneData.storylets.length} storylets, ${sceneData.characters.length} characters`)
+    console.log(`[WS] 📤 init_scene sent: ${sceneData.landmarks.length} landmarks, ${sceneData.storylets.length} storylets, ${sceneData.characters.length} characters`)
+    pendingSceneData = null
   }
-}
-
-function closeWs() {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-  if (wsInstance) {
-    wsInstance.onclose = null
-    wsInstance.close()
-    wsInstance = null
-  }
-  wsMessageHandler = null
 }
 
 // ── Store 实现 ────────────────────────────────────────────────────────────────
@@ -248,6 +338,7 @@ export const usePlayStore = create<PlayStoreState>()(
     isLoading: false,
     gameEnded: false,
     connected: false,
+    connecting: false,
     _snapshotStack: [],
     debugLogs: [],
 
@@ -255,38 +346,41 @@ export const usePlayStore = create<PlayStoreState>()(
     clearDebugLogs: () => set((s) => { s.debugLogs = [] }),
 
     initFromWSD: (_wsd, _firstLandmarkId) => {
-      // P3: WorldState 初始化由后端发送 state_update 驱动
-      // 前端只需确保连接已建立
       get().connect()
     },
 
     connect: () => {
       const s = get()
-      if (s.connected) return
-      set((st) => { st.connected = false }) // CONNECTING 状态
+      if (s.connected || s.connecting) return
+      reconnectAttempts = 0
+      intentionalClose = false
+      set((st) => { st.connected = false; st.connecting = true })
       getWs(
         (data) => get()._handleWsMessage(data),
-        (connected) => set((st) => { st.connected = connected }),
+        (connected, connecting) => set((st) => { st.connected = connected; st.connecting = connecting }),
       )
     },
 
     disconnect: () => {
       closeWs()
-      set((s) => { s.connected = false })
+      set((s) => { s.connected = false; s.connecting = false })
     },
 
     _sendWs: (data) => {
       const ws = wsInstance
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(data))
-      } else {
-        console.warn('[WS] Not connected, message dropped')
+      if (!ws) {
+        console.warn('[WS] ⚠️ No WebSocket instance')
+        return
       }
+      if (ws.readyState !== WebSocket.OPEN) {
+        console.warn('[WS] ⚠️ WebSocket not open (state:', ws.readyState, ')')
+        return
+      }
+      ws.send(JSON.stringify(data))
     },
 
     _handleWsMessage: (data) => {
       if (data.type === 'chat') {
-        // 玩家消息已在 sendMessage 中本地立即渲染，后端回显的 player 消息直接忽略
         if (data.role === 'player') return
         set((s) => {
           s.messages.push({
@@ -301,6 +395,7 @@ export const usePlayStore = create<PlayStoreState>()(
           })
         })
       } else if (data.type === 'state_update') {
+        console.log('[WS] 🔄 State update received')
         set((s) => {
           if (data.world_state) {
             s.worldState.qualities = { ...s.worldState.qualities, ...data.world_state.qualities }
@@ -332,7 +427,6 @@ export const usePlayStore = create<PlayStoreState>()(
       } else if (data.type === 'llm_debug') {
         const ld = data as WsLlmDebug
         set((s) => {
-          // 最多保留 200 条调试日志
           s.debugLogs.push({
             id: `dbg_${Date.now()}_${s.debugLogs.length}`,
             event: ld.event,
@@ -353,11 +447,14 @@ export const usePlayStore = create<PlayStoreState>()(
     sendMessage: (text) => {
       const s = get()
       if (s.isLoading || s.gameEnded) return
+      if (!s.connected) {
+        console.warn('[WS] ⚠️ Cannot send message - not connected')
+        return
+      }
 
       const isSilence = !text.trim()
       const displayText = isSilence ? '……' : text
 
-      // 压快照
       const snapshot: PlaySnapshot = {
         messages: JSON.parse(JSON.stringify(s.messages)),
         worldState: JSON.parse(JSON.stringify(s.worldState)),
@@ -368,7 +465,6 @@ export const usePlayStore = create<PlayStoreState>()(
       set((st) => {
         st._snapshotStack.push(snapshot)
         if (st._snapshotStack.length > 30) st._snapshotStack.shift()
-        // 立即显示玩家消息，不等后端回包
         st.messages.push({
           id: uid(),
           role: 'player',
@@ -379,7 +475,6 @@ export const usePlayStore = create<PlayStoreState>()(
         st.isLoading = true
       })
 
-      // 发送到 WebSocket（空字符串也会发送，后端识别为沉默）
       get()._sendWs({ type: 'player_input', text })
     },
 
@@ -408,13 +503,11 @@ export const usePlayStore = create<PlayStoreState>()(
         s.isLoading = false
         s.gameEnded = false
       })
-      // 重新发送 init_scene 让后端重置
       sendInitScene()
     },
 
     setQuality: (key, value) => {
       set((s) => { s.worldState.qualities[key] = value })
-      // 同步到后端
       get()._sendWs({
         type: 'debug_worldstate',
         data: get().worldState,
@@ -438,3 +531,11 @@ export const usePlayStore = create<PlayStoreState>()(
     },
   }))
 )
+
+// 在 store 创建后赋值，避免初始化顺序错误
+playStoreInstance = usePlayStore
+
+// 如果是开发环境，暴露到全局用于调试
+if (process.env.NODE_ENV === 'development') {
+  ;(window as any).usePlayStore = usePlayStore
+}
