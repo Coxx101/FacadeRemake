@@ -14,10 +14,8 @@ import json
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 
+from config.scenario_schema import ScenarioConfig
 
-# ═══════════════════════════════════════════════════════════════
-#  SemanticConditionStore — 条件索引（接口 + 简单实现）
-# ═══════════════════════════════════════════════════════════════
 
 @dataclass
 class SemanticCondition:
@@ -37,7 +35,7 @@ class SemanticConditionStore:
     """
 
     def __init__(self):
-        self._conditions: List[SemanticCondition] = {}
+        self._conditions: Dict[str, SemanticCondition] = {}
 
     def add(self, condition: SemanticCondition):
         """注册一条语义条件"""
@@ -74,12 +72,8 @@ class SemanticConditionStore:
         self._conditions.clear()
 
 
-# ═══════════════════════════════════════════════════════════════
-#  InputParser — 玩家输入守门人
-# ═══════════════════════════════════════════════════════════════
-
 class InputParser:
-    """玩家输入分析器。
+    """玩家输入检测与分析器。
 
     职责：
       - validate_input(): 规则快速过滤 + LLM 语义判断输入合法性
@@ -89,11 +83,12 @@ class InputParser:
     因为 CharacterAgent 和 Director 会自行理解玩家原文。
     """
 
-    def __init__(self, llm_client=None, condition_store: SemanticConditionStore = None):
+    def __init__(self, llm_client=None, condition_store: SemanticConditionStore = None,
+                 scenario_config: Optional[ScenarioConfig] = None):
         self.llm_client = llm_client
-        self.condition_store = condition_store  # 可选，未来接向量检索
+        self.condition_store = condition_store
+        self.scenario_config = scenario_config
 
-        # 预编译规则层正则
         self._meta_patterns = [
             re.compile(r"这是.*游戏", re.IGNORECASE),
             re.compile(r"你是.*AI", re.IGNORECASE),
@@ -101,15 +96,22 @@ class InputParser:
             re.compile(r"你是.*机器人", re.IGNORECASE),
             re.compile(r"你是什么", re.IGNORECASE),
         ]
+        
+        self._build_violation_patterns()
+
+    def _build_violation_patterns(self):
+        """根据配置动态构建违规正则"""
+        character_names = []
+        if self.scenario_config and self.scenario_config.characters:
+            character_names = [c.name for c in self.scenario_config.characters]
+        
+        name_pattern = "|".join(character_names) if character_names else "Trip|Grace|trip|grace|特拉维斯|格蕾丝"
+        
         self._violation_patterns = [
             re.compile(r"砸|摔|打|砍|杀|枪|刀|炸弹|武器"),
             re.compile(r"跳窗|离开|逃跑|出去|滚"),
-            re.compile(r"(拥抱|亲吻|抱|亲)\s*(Trip|Grace|trip|grace|特拉维斯|格蕾丝)"),
+            re.compile(rf"(拥抱|亲吻|抱|亲)\s*({name_pattern})"),
         ]
-
-    # ─────────────────────────────────────────────
-    #  合法性检查（独立调用）
-    # ─────────────────────────────────────────────
 
     def validate_input(self, player_input: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """检查玩家输入是否合法。
@@ -125,17 +127,14 @@ class InputParser:
         if not player_input or not player_input.strip():
             return {"valid": True, "severity": "soft", "reason": None, "response_mode": None}
 
-        # 第一层：规则快速过滤（零成本）
         rule_result = self._rule_check(player_input)
         if rule_result is not None:
             return rule_result
 
-        # 第二层：LLM 语义判断（规则层无法判断时）
         return self._llm_validate(player_input, context or {})
 
     def _rule_check(self, text: str) -> Optional[Dict[str, Any]]:
         """规则层快速过滤。返回 None 表示规则层无法判断。"""
-        # Meta 输入（破坏沉浸感）
         for pattern in self._meta_patterns:
             if pattern.search(text):
                 return {
@@ -145,7 +144,6 @@ class InputParser:
                     "response_mode": "deflect",
                 }
 
-        # 物理违规 / 破坏叙事环境
         for pattern in self._violation_patterns:
             if pattern.search(text):
                 return {
@@ -155,7 +153,6 @@ class InputParser:
                     "response_mode": "ignore",
                 }
 
-        # 超长输入（可能灌水或粘贴无关内容）
         if len(text) > 200:
             return {
                 "valid": True,
@@ -164,25 +161,37 @@ class InputParser:
                 "response_mode": "confused",
             }
 
-        return None  # 规则层无法判断，交给 LLM
+        return None
 
     def _llm_validate(self, player_input: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """LLM 语义合法性判断"""
         if not self.llm_client:
-            # 没有 LLM 时放行
             return {"valid": True, "severity": "soft", "reason": None, "response_mode": None}
 
         situation = context.get("situation", "老友做客，气氛微妙")
         storylet_title = context.get("storylet_title", "")
 
+        constraints = self.scenario_config.scene_constraints if self.scenario_config else None
+        
+        if constraints:
+            location_desc = constraints.location_description
+            can_leave = "可以" if constraints.can_leave_location else "不能"
+            allowed_props_text = "可以使用任何物品" if not constraints.allowed_props else f"只能使用：{constraints.allowed_props}"
+            forbidden_actions_text = ", ".join(constraints.forbidden_actions)
+        else:
+            location_desc = "公寓客厅，三个大学好友（Trip、Grace、玩家）在做客聊天"
+            can_leave = "不能"
+            allowed_props_text = "可以使用任何物品"
+            forbidden_actions_text = "离开、暴力、不合理的亲密行为"
+
         prompt = f"""你是一个互动戏剧系统的输入验证器。
 
 当前场景：{situation}
 当前剧情段落：{storylet_title}
-场景约束：这是一个公寓客厅，三个大学好友（Trip、Grace、玩家）在做客聊天。
-  - 玩家不能离开公寓
-  - 玩家不能使用暴力或破坏物品
-  - 玩家不能对角色做出不合理的亲密行为（他们是老友关系）
+场景约束：{location_desc}
+  - 玩家{can_leave}离开场景
+  - 玩家{allowed_props_text}
+  - 禁止行为：{forbidden_actions_text}
   - 玩家不应该暴露"这是游戏/AI"等 meta 信息
 
 玩家输入："{player_input}"
@@ -199,7 +208,6 @@ class InputParser:
 
         try:
             response = self.llm_client.call_llm(prompt, max_tokens=50, temperature=0.0)
-            # 尝试解析 JSON
             cleaned = response.strip()
             if cleaned.startswith("```"):
                 lines = cleaned.split("\n")
@@ -210,7 +218,6 @@ class InputParser:
             severity = result.get("severity", "soft")
             reason = result.get("reason", "")
 
-            # 确定 response_mode
             if not valid and severity == "hard":
                 response_mode = "ignore"
             elif severity == "hard":
@@ -228,10 +235,6 @@ class InputParser:
         except Exception as e:
             print(f"[InputParser] LLM validate 失败（{e}），放行")
             return {"valid": True, "severity": "soft", "reason": None, "response_mode": None}
-
-    # ─────────────────────────────────────────────
-    #  统一分析入口（合法性 + 语义匹配）
-    # ─────────────────────────────────────────────
 
     def analyze(self,
                 player_input: str,
@@ -253,19 +256,16 @@ class InputParser:
                 "matched_conditions": List[str],  # 命中的条件 id 列表
             }
         """
-        # 如果没有条件需要匹配，只做合法性检查
         if not conditions:
             val = self.validate_input(player_input, context)
             val["matched_conditions"] = []
             return val
 
-        # 第一层：规则快速过滤
         rule_result = self._rule_check(player_input)
         if rule_result is not None and rule_result.get("valid") is False:
             rule_result["matched_conditions"] = []
             return rule_result
 
-        # 第二层：LLM 合并判断（合法性 + 语义匹配）
         return self._llm_analyze(player_input, conditions, context or {})
 
     def _llm_analyze(self,
@@ -274,7 +274,6 @@ class InputParser:
                      context: Dict[str, Any]) -> Dict[str, Any]:
         """一次 LLM 调用完成合法性和语义匹配"""
 
-        # 可选：条件过多时用 store 预筛选
         if self.condition_store and len(conditions) > 10:
             narrowed = self.condition_store.search(player_input, top_k=8)
             narrowed_ids = {c.id for c in narrowed}
@@ -282,7 +281,6 @@ class InputParser:
             print(f"[InputParser] 条件预筛选：{len(conditions)} 条（原始 {len(narrowed_ids)} 条）")
 
         if not self.llm_client:
-            # 没有 LLM：放行 + 不过滤条件（全部视为候选）
             return {
                 "valid": True,
                 "severity": "soft",
@@ -294,7 +292,10 @@ class InputParser:
         situation = context.get("situation", "老友做客，气氛微妙")
         storylet_title = context.get("storylet_title", "")
 
-        # 构建条件列表文本
+        constraints = self.scenario_config.scene_constraints if self.scenario_config else None
+        location_desc = constraints.location_description if constraints else "公寓客厅，三个大学好友做客聊天"
+        can_leave = "可以" if (constraints and constraints.can_leave_location) else "不能"
+
         cond_lines = []
         for i, cond in enumerate(conditions):
             source_label = "剧情" if cond.source_type == "storylet" else "转场"
@@ -306,7 +307,7 @@ class InputParser:
 
 当前场景：{situation}
 当前剧情段落：{storylet_title}
-场景约束：公寓客厅，三个大学好友做客聊天。玩家不能离开公寓、不能使用暴力。
+场景约束：{location_desc}。玩家{can_leave}离开公寓、不能使用暴力。
 
 玩家输入："{player_input}"
 
@@ -339,7 +340,6 @@ class InputParser:
             reason = result.get("reason", "")
             matched_indices = result.get("matched", [])
 
-            # 确定 response_mode
             if not valid and severity == "hard":
                 response_mode = "ignore"
             elif severity == "hard":
@@ -347,7 +347,6 @@ class InputParser:
             else:
                 response_mode = None
 
-            # 将索引映射回条件 id
             matched_ids = []
             for idx in matched_indices:
                 if isinstance(idx, int) and 0 <= idx < len(conditions):
@@ -372,5 +371,5 @@ class InputParser:
                 "severity": "soft",
                 "reason": None,
                 "response_mode": None,
-                "matched_conditions": [],  # 失败时不过滤，由结构化条件兜底
+                "matched_conditions": [],
             }

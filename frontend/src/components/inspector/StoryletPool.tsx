@@ -17,7 +17,6 @@ const BLANK_STORYLET: Omit<Storylet, 'id'> = {
   sticky: false,
   priority_override: undefined,
   salience: { base: 5, modifiers: [] },
-  choices_hint: [],
   on_interrupt: 'pause',
   completion_trigger: undefined,
   force_wrap_up: undefined,

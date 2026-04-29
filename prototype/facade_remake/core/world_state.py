@@ -2,7 +2,7 @@
 World State 模块
 管理游戏世界的状态变量
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 
 
@@ -114,3 +114,81 @@ class WorldState:
             flags=data.get("flags", {}),
             relationships=data.get("relationships", {})
         )
+
+    def get_display_values(self) -> List[Dict[str, Any]]:
+        """返回格式化的状态值列表，供前端展示。
+
+        返回格式：[
+            {"key": "tension", "value": 5.0, "max": 10, "label": "张力", "icon": "⚡"},
+            ...
+        ]
+        """
+        display_map = {
+            "tension": {"label": "张力", "icon": "⚡", "max": 10},
+            "grace_comfort": {"label": "Grace 舒适度", "icon": "💔", "max": 10},
+            "trip_comfort": {"label": "Trip 舒适度", "icon": "💔", "max": 10},
+            "marriage_tension": {"label": "婚姻张力", "icon": "⚡", "max": 10},
+        }
+        result = []
+        for key, current_val in self.qualities.items():
+            meta = display_map.get(key, {"label": key, "icon": "📊", "max": 10})
+            result.append({
+                "key": key,
+                "value": current_val,
+                "max": meta["max"],
+                "label": meta["label"],
+                "icon": meta["icon"],
+            })
+        return result
+
+    def compute_beat_delta(self,
+                           effect_trends: Dict[str, Dict[str, Any]],
+                           accumulated_delta: Dict[str, float],
+                           player_input: str = "",
+                           defusing_keywords: List[str] = None) -> Dict[str, int]:
+        """根据 Storylet 效果大纲 + 上下文，计算 beat 级即时状态变化。
+
+        Args:
+            effect_trends: Storylet.get_effect_trends() 返回的趋势信息
+            accumulated_delta: 本 Storylet 已累计的状态变化
+            player_input: 玩家当前输入（空=没说话）
+            defusing_keywords: 缓解气氛的关键词列表（可选）
+
+        Returns:
+            实际 delta 字典，如 {"tension": 1, "grace_comfort": -1}
+        """
+        if not defusing_keywords:
+            defusing_keywords = ["冷静", "别吵", "算了", "没事", "缓一缓", "消消气",
+                                  "不好意思", "抱歉", "对不起", "好吧", "行了"]
+        
+        delta = {}
+        player_is_defusing = any(kw in player_input for kw in defusing_keywords) if player_input else False
+
+        for key, trend_info in effect_trends.items():
+            trend = trend_info.get("trend", "rising")
+            lo, hi = trend_info.get("range", [0, 1])
+            
+            if trend == "set":
+                continue  # set 类型不需要增量计算
+
+            remaining = hi - accumulated_delta.get(key, 0)
+            
+            if remaining <= 0:
+                # 已达上限，不再变化
+                continue
+
+            if player_is_defusing:
+                # 玩家在缓解：逆趋势调整，允许小幅反向
+                delta[key] = -1
+            elif not player_input:
+                # 玩家没说话：按趋势小幅推进
+                delta[key] = min(1, remaining)
+            else:
+                # 玩家说了话但无特殊语义：正常推进
+                delta[key] = min(1, remaining)
+
+            # 确保 delta 不超出剩余空间
+            if delta[key] > remaining:
+                delta[key] = remaining
+
+        return delta

@@ -25,6 +25,7 @@ export interface ChatMessage {
   speech?: string
   action?: string
   thought?: string
+  isSilence?: boolean  // 玩家保持沉默标记
   timestamp: number
 }
 
@@ -295,6 +296,7 @@ export const usePlayStore = create<PlayStoreState>()(
             action: data.action,
             thought: data.thought,
             speakerName: data.speaker_name,
+            isSilence: (data as any).is_silence,
             timestamp: Date.now(),
           })
         })
@@ -352,6 +354,9 @@ export const usePlayStore = create<PlayStoreState>()(
       const s = get()
       if (s.isLoading || s.gameEnded) return
 
+      const isSilence = !text.trim()
+      const displayText = isSilence ? '……' : text
+
       // 压快照
       const snapshot: PlaySnapshot = {
         messages: JSON.parse(JSON.stringify(s.messages)),
@@ -367,13 +372,14 @@ export const usePlayStore = create<PlayStoreState>()(
         st.messages.push({
           id: uid(),
           role: 'player',
-          speech: text,
+          speech: displayText,
+          isSilence,
           timestamp: Date.now(),
         })
         st.isLoading = true
       })
 
-      // 发送到 WebSocket
+      // 发送到 WebSocket（空字符串也会发送，后端识别为沉默）
       get()._sendWs({ type: 'player_input', text })
     },
 

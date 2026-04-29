@@ -16,7 +16,7 @@ export default function InputBar() {
   const resetGame = usePlayStore((s) => s.resetGame)
   const snapshotCount = usePlayStore((s) => s._snapshotStack.length)
 
-  const canSend = text.trim().length > 0 && !isLoading
+  const canSend = !isLoading
   const canRollback = snapshotCount > 0 && !isLoading
 
   // 响应结束后自动聚焦输入框
@@ -29,9 +29,9 @@ export default function InputBar() {
   }, [isLoading])
 
   const handleSend = useCallback(() => {
+    if (isLoading) return
     const t = text.trim()
-    if (!t || isLoading) return
-    sendMessage(t)
+    sendMessage(t || '')  // 空输入 = 保持沉默
     setText('')
     textareaRef.current?.focus()
   }, [text, isLoading, sendMessage])

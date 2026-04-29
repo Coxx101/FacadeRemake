@@ -175,8 +175,10 @@ class GameSession:
             except ImportError:
                 pass
 
-            model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            self.llm_client = LLMClient(model=model)
+            # 支持通过环境变量或请求参数选择 LLM provider
+            provider = os.getenv("LLM_PROVIDER", "openai")
+            model = os.getenv("LLM_MODEL")
+            self.llm_client = LLMClient(provider=provider, model=model)
             self.llm_client.debug = True  # 终端也打印
 
             # 注入 on_debug 回调：将 LLM 调试信息通过 WebSocket 推送到前端
@@ -361,39 +363,14 @@ class GameSession:
 
         return messages
 
-    def _decide_speakers(self, player_input: str, storylet_content: Dict) -> List[str]:
-        """委托 DirectorAgent 决定本轮哪些角色回应及顺序。
-
-        如果 Director 不可用，回退到简单的点名检测。
-        """
-        if self.director_agent and self.director_agent.llm_client:
-            return self.director_agent.decide_speakers(
-                player_input=player_input,
-                storylet_content=storylet_content,
-                dialogue_history=self.conversation_history,
-                characters=["trip", "grace"]
-            )
-
-        # Fallback：Director 不可用时，仅做点名检测
-        player_lower = player_input.lower()
-        mentioned = []
-        if any(kw in player_lower for kw in ["trip", "特拉维斯"]):
-            mentioned.append("trip")
-        if any(kw in player_input for kw in ["grace", "格蕾丝"]):
-            mentioned.append("grace")
-        if mentioned:
-            print(f"[DRAMA] 点名检测（fallback 模式）：{mentioned}")
-            return mentioned
-        return ["trip", "grace"]
-
     def _generate_storylet_response(self, storylet, player_input: str,
                                      director_extra: str = "") -> List[Dict[str, Any]]:
-        """根据当前 Storylet 生成响应消息（LLM 驱动，含角色间对话循环）"""
+        """根据当前 Storylet 生成响应消息（BeatPlan 驱动）"""
         content = storylet.content
 
         messages: List[Dict[str, Any]] = []
 
-        # 1. 旁白（仅在 Storylet 首轮发送，避免每轮重复）
+        # 1. 旁白（仅在 Storylet 首轮发送）
         director_note = content.get("director_note", "")
         if director_note and self.storylet_turn_count <= 1:
             sentences = director_note.split("。")
@@ -407,179 +384,133 @@ class GameSession:
                     "speech": narration,
                 })
 
-        # 2. Director 决定本轮哪些角色先开口
-        initial_speakers = self._decide_speakers(player_input, content)
-
-        # 3. 角色对话循环（Character Banter Loop）
+        # 2. 获取 BeatPlan（由 Director 生成，包含说话人、意图等）
         world_state_dict = self.world_state.to_dict()
+        beat_plan = []
+        if self.director_agent and self.director_agent.llm_client:
+            try:
+                beat_plan = self.director_agent.generate_beat_plan(
+                    storylet_content=content,
+                    world_state=world_state_dict,
+                    dialogue_history=self.conversation_history,
+                )
+                if self.director_agent.debug_mode:
+                    print(f"[Director] BeatPlan: {len(beat_plan)} beats")
+            except Exception as e:
+                print(f"[Director] BeatPlan 生成失败: {e}")
+
+        if not beat_plan:
+            # Fallback：兜底旁白
+            messages.append({
+                "type": "chat",
+                "role": "narrator",
+                "speech": "三人沉默着。空气凝固了一瞬。",
+            })
+            return messages
+
+        # 3. 执行 BeatPlan
+        char_agents = {"trip": self.trip_agent, "grace": self.grace_agent}
+        char_display = {"trip": "Trip", "grace": "Grace"}
         forbidden = storylet.content.get("forbidden_reveals", [])
         allowed_behaviors = storylet.content.get("allowed_behaviors", None)
 
-        char_agents = {"trip": self.trip_agent, "grace": self.grace_agent}
-        char_display = {"trip": "Trip", "grace": "Grace"}
+        for beat in beat_plan:
+            speaker = beat.get("speaker", "")
+            beat_intent = beat.get("intent", "")
+            addressee = beat.get("addressee", "player")
 
-        # Phase 1: 初始发言者响应（由玩家输入触发）
-        last_speech = ""
-        last_character = None
+            # player_turn = 交还给玩家
+            if speaker == "player_turn":
+                if self.director_agent and self.director_agent.debug_mode:
+                    print(f"[Director] BeatPlan 结束，等待玩家输入")
+                break
 
-        for i, character in enumerate(initial_speakers):
-            agent = char_agents.get(character)
+            # 忽略无效 speaker
+            if speaker not in char_agents:
+                continue
+
+            agent = char_agents[speaker]
             if agent is None:
                 continue
 
-            # 为发言角色生成 Director 指令
-            director_instruction = ""
-            if self.director_agent and self.current_storylet:
-                try:
-                    sl_content = self.current_storylet.content
-                    director_instruction = self.director_agent.generate_instruction_for(
-                        character, sl_content, world_state_dict,
-                        self.conversation_history, use_llm=True
-                    )
-                    # 注入 InputParser 的额外提示（如 soft 违规提示）
-                    if director_extra:
-                        director_instruction = director_instruction + "\n" + director_extra if director_instruction else director_extra
-                except Exception as e:
-                    print(f"[Director] 指令生成失败（{character}）: {e}")
+            # 构建 BeatContext
+            from facade_remake.agents.character_agent import Beat, BeatContext
+            beat_obj = Beat(
+                speaker=speaker,
+                addressee=addressee,
+                intent=beat_intent,
+                urgency=beat.get("urgency", "medium"),
+                world_state_delta=beat.get("world_state_delta", {}),
+                state_change_hint=beat.get("state_change_hint", ""),
+            )
 
-            # 多个初始发言者时，第二个角色附加提示
-            if i > 0:
-                extra_note = "（另一个角色已经做出了回应，你根据情境决定是否开口，可以沉默、用肢体回应或简短说话，不要重复对方的内容。）"
-                director_instruction = director_instruction + "\n" + extra_note if director_instruction else extra_note
+            context = BeatContext(
+                beat=beat_obj,
+                character=speaker,
+                player_input=player_input,
+                dialogue_history=self.conversation_history,
+                world_state=world_state_dict,
+                character_profile=agent.profile,
+                scenario_config=agent._scenario_config,
+            )
+
+            # 注入额外提示（如 soft 违规、沉默等）
+            if director_extra:
+                context.beat.intent = f"{context.beat.intent}\n{director_extra}"
 
             try:
-                result = agent.generate_response(
-                    player_input=player_input,
-                    storylet_content=content,
-                    world_state=world_state_dict,
-                    conversation_history=self.conversation_history,
-                    director_instruction=director_instruction,
-                    forbidden_topics=forbidden,
-                    allowed_behaviors=allowed_behaviors,
-                )
-                speech = result.get("speech", "")
+                result = agent._generate_beat_response(beat_obj, context)
+                speech = result.get("dialogue", "")
                 action = result.get("action", "")
                 thought = result.get("thought", "")
+
+                # 清理前缀（如 "Grace: "）
+                speech = agent._strip_name_prefix(speech)
+
+                # 验证并清理动作
+                action = agent._validate_actions(action)
 
                 # 记录到对话历史
                 parts = [p for p in [speech, action] if p]
                 if parts:
-                    self.conversation_history.append(f"{character}: {'  '.join(parts)}")
+                    self.conversation_history.append(f"{speaker}: {'  '.join(parts)}")
+
                 messages.append({
                     "type": "chat",
-                    "role": character,
-                    "speaker_name": char_display[character],
+                    "role": speaker,
+                    "speaker_name": char_display.get(speaker, speaker),
                     "speech": speech,
                     "action": action,
                     "thought": thought,
                 })
 
-                last_speech = speech
-                last_character = character
-
             except Exception as e:
-                print(f"[LLM] {character} 响应失败: {e}")
+                print(f"[LLM] {speaker} 响应失败: {e}")
                 messages.append({
                     "type": "chat",
                     "role": "system",
-                    "speech": f"[Error] {character} 生成失败: {e}",
+                    "speech": f"[Error] {speaker} 生成失败: {e}",
                 })
-
-        # Phase 2: 角色间对话循环（Banter Loop）
-        banter_round = 0
-        while last_character and last_speech:
-            banter_round += 1
-
-            # Director 判断：对方是否需要接话？
-            if not self.director_agent or not self.director_agent.llm_client:
-                break  # Director 不可用，不进行 banter
-
-            decision = self.director_agent.should_banter_continue(
-                last_speech=last_speech,
-                last_character=last_character,
-                dialogue_history=self.conversation_history,
-                world_state=world_state_dict,
-                banter_round=banter_round,
-            )
-
-            if not decision.get("should", False):
-                print(f"[Banter] 第{banter_round}轮 → 停止（{decision.get('reason', '')}）")
-                break
-
-            responder = decision.get("responder", "")
-            if responder not in char_agents:
-                break
-
-            print(f"[Banter] 第{banter_round}轮 → {responder} 接话（{decision.get('reason', '')}）")
-
-            # 为接话角色生成 Director 指令
-            director_instruction = ""
-            if self.director_agent and self.current_storylet:
-                try:
-                    sl_content = self.current_storylet.content
-                    director_instruction = self.director_agent.generate_instruction_for(
-                        responder, sl_content, world_state_dict,
-                        self.conversation_history, use_llm=True
-                    )
-                    # banter 模式额外提示：你在回应配偶
-                    director_instruction += "\n（你在回应你的配偶，不是回应玩家。保持角色间的互动。）"
-                except Exception as e:
-                    print(f"[Director] banter 指令生成失败（{responder}）: {e}")
-
-            banter_ctx = {
-                "trigger_character": last_character,
-                "target_character": responder,
-                "banter_round": banter_round,
-            }
-
-            try:
-                agent = char_agents[responder]
-                result = agent.generate_response(
-                    player_input=None,  # banter 模式：不是玩家触发
-                    storylet_content=content,
-                    world_state=world_state_dict,
-                    conversation_history=self.conversation_history,
-                    director_instruction=director_instruction,
-                    forbidden_topics=forbidden,
-                    allowed_behaviors=allowed_behaviors,
-                    banter_context=banter_ctx,
-                )
-                speech = result.get("speech", "")
-                action = result.get("action", "")
-                thought = result.get("thought", "")
-
-                # 记录到对话历史
-                parts = [p for p in [speech, action] if p]
-                if parts:
-                    self.conversation_history.append(f"{responder}: {'  '.join(parts)}")
-                messages.append({
-                    "type": "chat",
-                    "role": responder,
-                    "speaker_name": char_display[responder],
-                    "speech": speech,
-                    "action": action,
-                    "thought": thought,
-                })
-
-                # 更新 last，为下一轮循环准备
-                last_speech = speech
-                last_character = responder
-
-            except Exception as e:
-                print(f"[LLM] {responder} banter 响应失败: {e}")
-                break
 
         return messages
 
-    async def process_turn(self, player_input: str) -> List[Dict[str, Any]]:
-        """处理一个回合，返回要推送给前端的消息列表"""
+    async def process_turn(self, player_input: str, is_silence: bool = False) -> List[Dict[str, Any]]:
+        """处理一个回合，返回要推送给前端的消息列表
+
+        Args:
+            player_input: 玩家输入文本
+            is_silence: True 表示玩家保持沉默（回车/超时），此时对话历史记录"保持沉默"
+        """
         self.turn += 1
         self.storylet_turn_count += 1
 
         messages: List[Dict[str, Any]] = []
 
-        # 记录玩家输入
-        self.conversation_history.append(f"玩家: {player_input}")
+        # 记录玩家输入到对话历史
+        if is_silence:
+            self.conversation_history.append("玩家: 保持沉默")
+        else:
+            self.conversation_history.append(f"玩家: {player_input}")
 
         # ── 通知 Director 推进回合计数 ──
         if self.director_agent:
@@ -592,32 +523,43 @@ class GameSession:
         self.landmark_manager.increment_turn_count()
 
         # ── 玩家消息回显 ──
-        messages.append({
-            "type": "chat",
-            "role": "player",
-            "speech": player_input,
-        })
+        if is_silence:
+            messages.append({
+                "type": "chat",
+                "role": "player",
+                "speech": "……",
+                "is_silence": True,
+            })
+        else:
+            messages.append({
+                "type": "chat",
+                "role": "player",
+                "speech": player_input,
+            })
 
         # ── InputParser：合法性检查 + 语义条件匹配 ──
-        semantic_conditions = self._collect_semantic_conditions()
-        analysis_context = {
-            "situation": "老友做客，气氛微妙",
-            "storylet_title": self.current_storylet.title if self.current_storylet else "",
-        }
-        analysis = self.input_parser.analyze(player_input, semantic_conditions, analysis_context)
+        # 沉默时跳过 InputParser（不需要检查合法性），直接生成角色对沉默的反应
+        matched_semantic_ids = []
+        if not is_silence:
+            semantic_conditions = self._collect_semantic_conditions()
+            analysis_context = {
+                "situation": "老友做客，气氛微妙",
+                "storylet_title": self.current_storylet.title if self.current_storylet else "",
+            }
+            analysis = self.input_parser.analyze(player_input, semantic_conditions, analysis_context)
 
-        matched_semantic_ids = analysis.get("matched_conditions", [])
-        print(f"[InputParser] valid={analysis.get('valid')}, matched={matched_semantic_ids}")
+            matched_semantic_ids = analysis.get("matched_conditions", [])
+            print(f"[InputParser] valid={analysis.get('valid')}, matched={matched_semantic_ids}")
 
-        # ── 非法输入处理 ──
-        if not analysis.get("valid", True):
-            invalid_msgs = self._handle_invalid_input(analysis)
-            messages.extend(invalid_msgs)
-            messages.append(self._get_state_snapshot())
-            return messages
+            # ── 非法输入处理 ──
+            if not analysis.get("valid", True):
+                invalid_msgs = self._handle_invalid_input(analysis)
+                messages.extend(invalid_msgs)
+                messages.append(self._get_state_snapshot())
+                return messages
 
-        # ── 检测玩家调解行为 ──
-        self._check_player_mediation(player_input)
+            # ── 检测玩家调解行为 ──
+            self._check_player_mediation(player_input)
 
         # ── Storylet 选择（传入 matched_semantic_ids）──
         should_select = (
@@ -656,7 +598,9 @@ class GameSession:
         if self.current_storylet:
             # 如果 InputParser 检测到 soft 违规，给 Director 注入提示
             director_extra = ""
-            if analysis.get("severity") == "soft" and analysis.get("response_mode") == "confused":
+            if is_silence:
+                director_extra = "\n（玩家选择了沉默。角色可以注意到并做出反应——追问、尴尬、生气、或自己继续话题。）"
+            elif analysis.get("severity") == "soft" and analysis.get("response_mode") == "confused":
                 director_extra = "\n（玩家的话有点奇怪，角色可以用困惑或转移话题的方式反应。）"
 
             # LLM 调用是同步的，用线程池避免阻塞事件循环
@@ -974,8 +918,6 @@ async def websocket_play(ws: WebSocket):
                     continue
 
                 player_text = data.get("text", "").strip()
-                if not player_text:
-                    continue
                 if session.game_ended:
                     await ws.send_json({
                         "type": "chat",
@@ -984,7 +926,12 @@ async def websocket_play(ws: WebSocket):
                     })
                     continue
 
-                messages = await session.process_turn(player_text)
+                # 空输入 = 玩家保持沉默，和命令行回车沉默走同一逻辑
+                is_silence = not player_text
+                if is_silence:
+                    player_text = "保持沉默"
+
+                messages = await session.process_turn(player_text, is_silence=is_silence)
                 for msg in messages:
                     await ws.send_json(msg)
 

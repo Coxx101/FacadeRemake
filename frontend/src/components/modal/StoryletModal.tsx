@@ -395,15 +395,6 @@ function ScheduleTab({ form, set }: { form: Storylet; set: SetFn }) {
           <option value="continue">continue — 忽略打断继续</option>
         </select>
       </Field>
-
-      <Field label="选项提示 (choices_hint)">
-        <SectionHint>给 LLM 的备选行动提示（不强制）</SectionHint>
-        <TagInput
-          tags={form.choices_hint}
-          onChange={(t) => set('choices_hint', t)}
-          placeholder="如：追问、转移话题、安慰..."
-        />
-      </Field>
     </div>
   )
 }

@@ -17,7 +17,7 @@
 │  内容类   content                                               │
 │  后置类   effects                                               │
 │  调度类   repeatability, salience, sticky, cooldown             │
-│  演出类   choices_hint, on_interrupt                            │
+│  演出类   on_interrupt                                         │
 │  结束类   completion_trigger, force_wrap_up                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -229,11 +229,8 @@ Storylet 被选中的"优先级评分"，来自 Emily Short 的 QBN 理论。
 ### 🎬 演出类
 
 ```json
-"choices_hint": ["追问 Grace", "质疑 Trip 的打断", "假装没注意到"],
 "on_interrupt": "pause"
 ```
-
-**`choices_hint`**：给玩家的"选择提示"，不是强制选项，而是暗示玩家可以往哪些方向推进。UI 可以显示为对话气泡或思维提示。
 
 **`on_interrupt`**：玩家突然说了个完全无关的话题时怎么处理：
 - `"pause"`：暂停当前 Storylet，保存状态，稍后恢复
@@ -360,7 +357,6 @@ Step B: generate_response()        ← 台词/动作生成（temperature=0.6）
     "forbidden_reveals": ["trip_affair", "grace_decision"]
   },
 
-  "choices_hint": ["追问 Grace", "质疑 Trip 的打断", "假装没注意到"],
 
   "effects": [
     { "key": "secret_hinted",             "op": "=", "value": true  },

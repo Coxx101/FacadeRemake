@@ -158,10 +158,10 @@ const MessageItem = memo(({ msg, isLast }: MessageItemProps) => {
               {isPlayer && (
                 <span style={{
                   fontSize: '10px',
-                  color: 'rgba(126,184,247,0.5)',
+                  color: msg.isSilence ? 'rgba(126,184,247,0.35)' : 'rgba(126,184,247,0.5)',
                   fontStyle: 'italic',
                 }}>
-                  （你说）
+                  {msg.isSilence ? '（沉默）' : '（你说）'}
                 </span>
               )}
             </div>
@@ -171,11 +171,14 @@ const MessageItem = memo(({ msg, isLast }: MessageItemProps) => {
           {msg.speech && (
             <p style={{
               margin: '0 0 4px 0',
-              color: isPlayer ? 'rgba(126,184,247,0.9)' : '#e8eaf2',
+              color: isPlayer
+                ? (msg.isSilence ? 'rgba(126,184,247,0.4)' : 'rgba(126,184,247,0.9)')
+                : '#e8eaf2',
               fontSize: '15px',
               lineHeight: '1.8',
               paddingLeft: isPlayer ? '0' : '12px',
               borderLeft: isPlayer ? 'none' : `2px solid ${color}40`,
+              fontStyle: msg.isSilence ? 'italic' : undefined,
             }}>
               {speechDisplayed}
             </p>

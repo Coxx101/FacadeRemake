@@ -35,7 +35,6 @@ class Storylet:
     salience: Dict[str, Any] = field(default_factory=dict)
     
     # 演出
-    choices_hint: List[str] = field(default_factory=list)
     on_interrupt: str = "pause"  # pause, abort, continue
     
     # 结束触发
@@ -109,13 +108,53 @@ class Storylet:
             sticky=data.get("sticky", False),
             priority_override=data.get("priority_override"),
             salience=data.get("salience", {}),
-            choices_hint=data.get("choices_hint", []),
             on_interrupt=data.get("on_interrupt", "pause"),
             completion_trigger=data.get("completion_trigger"),
             force_wrap_up=data.get("force_wrap_up")
         )
 
         return storylet
+
+    def get_effect_trends(self) -> Dict[str, Dict[str, Any]]:
+        """获取 effects 的趋势信息，供 beat 级即时状态变化使用。
+
+        返回格式：{"tension": {"trend": "rising", "range": [1, 3]}, ...}
+
+        effects 格式支持两种：
+        1. 旧格式（精确值）：{"key": "tension", "op": "+", "value": 1}
+           → {"trend": "rising", "range": [abs(value), abs(value)]}
+        2. 新格式（趋势+范围）：{"key": "tension", "trend": "rising", "range": [1, 3]}
+           → 直接使用
+        """
+        trends = {}
+        for effect in self.effects:
+            key = effect.get("key")
+            if not key:
+                continue
+
+            # 新格式：直接有 trend 和 range
+            if "trend" in effect:
+                trends[key] = {
+                    "trend": effect.get("trend", "rising"),
+                    "range": effect.get("range", [0, 1]),
+                }
+                continue
+
+            # 旧格式：从 op + value 推断
+            op = effect.get("op")
+            value = effect.get("value", 0)
+            if isinstance(value, (int, float)):
+                abs_val = abs(value)
+                if op in ("+", "max"):
+                    trends[key] = {"trend": "rising", "range": [abs_val, abs_val]}
+                elif op == "-":
+                    trends[key] = {"trend": "falling", "range": [abs_val, abs_val]}
+                elif op == "=":
+                    trends[key] = {"trend": "set", "range": [0, 0]}
+                elif op == "min":
+                    trends[key] = {"trend": "falling", "range": [abs_val, abs_val]}
+
+        return trends
 
 
 class StoryletManager:

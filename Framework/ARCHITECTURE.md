@@ -1,591 +1,697 @@
-# FacadeRemake — 剧情自适应系统 架构框架 v0.3
+# FacadeRemake — 系统架构文档
 
-> 基于现代 LLM + Agent 技术复刻 Facade 核心体验的设计框架。
-> 最后更新：2026-04-23
-> **当前状态**：核心原型已实现并可运行（`prototype/facade_remake/`），本文档记录已实现架构与待扩展方向。
+> 最后更新：2026-04-29
+> **当前状态**：核心引擎已完整实现（`prototype/facade_remake/`），前端可视化编辑器（Design 模式）与实时游戏界面（Play 模式）均已完成并可正常运行。
 
 ---
 
 ## 一、设计哲学
 
-### 1.1 核心矛盾与破解思路
+### 1.1 核心问题
 
-互动叙事存在一个根本张力（Doug Sharp，1989，你笔记中的经典文献）：
+互动叙事系统面临的根本张力在于**叙事连贯性**与**玩家行动自由度**之间的内在矛盾。传统分支叙事结构通过预先枚举所有可能路径来保证叙事的可控性，但随着分支深度的增加，路径空间的组合爆炸问题导致内容创作成本呈指数级增长，难以构建兼具深度与广度的沉浸式叙事体验。与此相对，纯涌现式（emergent）叙事虽然赋予玩家充分的行动自由，却容易出现叙事失控、情节偏离主线等问题，致使整体故事失去必要的戏剧张力。
 
-> **故事要连贯 ↔ 游戏要自由**
+本系统的解法：**叙事骨架约束下的多智能体生成式内容**。
 
-传统解法要么牺牲自由（线性分支树），要么牺牲连贯（纯涌现模拟）。
-
-本系统的破解思路：**三层分离**
+### 1.2 两层架构设计原则
 
 ```
-叙事骨架层（Landmark + Storylet）  ← 叙事设计师掌控
-       ↕ 边界协议
-内容生成层（LLM 角色 Agent）       ← 模型负责细节
-       ↕ 玩家输入
-玩家感知层（自由自然语言输入）      ← 玩家体验沉浸
+┌─────────────────────────────────────────────────────────┐
+│  叙事骨架层（预设计 · 只读）                              │
+│  Landmark DAG + Storylet 池                              │
+│  · 叙事设计师预定义剧情走向与关键节点                    │
+│  · 通过阶段标签、条件规则、转场逻辑控制叙事空间边界      │
+│  · 运行时保持只读，LLM 无法修改叙事骨架                  │
+├─────────────────────────────────────────────────────────┤
+│  内容生成层（运行时 · LLM 驱动）                         │
+│  InputParser + DirectorAgent + CharacterAgent × N        │
+│  · 多智能体协作控制每一轮对话的具体内容                  │
+│  · 骨架提供约束边界，Agent 在约束内自由发挥              │
+│  · 玩家以自然语言交互，不受预设选项限制                  │
+└─────────────────────────────────────────────────────────┘
 ```
 
-对应你笔记中 Emily Short 的那句话：**用 QBN 管状态，用 Salience 选反应，用 Waypoint 控节奏。**
+**核心设计原则：骨架管"发生什么"，Agent 管"怎么发生"。**
+
+叙事骨架层确保叙事不会偏离预设轨道——无论玩家如何行动，故事都将经过预先设定的关键戏剧节点。内容生成层确保每次游玩体验的独特性——相同的叙事骨架，不同玩家所经历的具体对话完全不同。
+
+### 1.3 多智能体协作模型
+
+本系统的内容生成由三类 Agent 协作完成，每类 Agent 具有明确的职责边界：
+
+| Agent              | 职责     | 输入                                | 输出                    |
+| ------------------ | -------- | ----------------------------------- | ----------------------- |
+| **InputParser**    | 输入守门 | 玩家自然语言输入                    | 合法性判定 + 语义条件匹配 |
+| **DirectorAgent**  | 叙事导演 | 当前 Storylet + 世界状态 + 对话历史 | BeatPlan + 角色指导指令  |
+| **CharacterAgent** | 角色扮演 | 角色档案 + 导演指令 + 对话历史       | 台词 + 内心独白 + 动作序列 |
+
+协作流程：**InputParser 守门** → **DirectorAgent 规划** → **CharacterAgent 表演**。三类 Agent 各自独立调用 LLM，职责互不越界。
+
+### 1.4 关键设计决策
+
+- **不在 InputParser 做结构化意图分类**：DirectorAgent 与 CharacterAgent 自行理解玩家原文，避免结构化输出层的信息损失
+- **Director 只给指导，不给台词**：DirectorAgent 决定情绪基调与叙事意图，而非直接生成具体台词
+- **角色心口不一**：CharacterAgent 通过三步生成（内心独白 → 行为选择 → 台词/动作）实现内心想法与外显行为的分离
+- **语义条件合并判断**：InputParser.analyze() 将多个 llm_trigger 条件合并为单次 LLM 调用，显著降低 API 开销
 
 ---
 
 ## 二、系统总体架构
 
+### 2.1 分层架构全貌
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        FacadeRemake 系统                        │
-│                                                                 │
-│  玩家自然语言输入                                                │
-│         │                                                       │
-│         ▼                                                       │
-│  ┌─────────────────────┐                                        │
-│  │   输入解析模块        │  ← 合法性检查 + 语义条件匹配           │
-│  │  (Input Parser)     │    validate_input() + analyze()         │
-│  │  + SemanticCondition │    统一一次 LLM 调用                    │
-│  │    Store             │    硬/软拒绝 → 忽略/角色困惑反应        │
-│  └──────────┬──────────┘                                        │
-│             │ matched_semantic_ids 驱动 Storylet 选择            │
-│             │ + Landmark 推进                                    │
-│             ▼                                                   │
-│  ┌─────────────────────┐    ┌────────────────────────┐          │
-│  │   世界状态模型        │◄──►│  角色行为库              │          │
-│  │  (World State)      │    │  character_behaviors    │          │
-│  │  · qualities        │    │  · 15种行为（父/母各10）  │          │
-│  │  · flags            │    │  · StoryVerse ActionSchema         │
-│  │  · 关系数值          │    └────────────────────────┘          │
-│  └──────────┬──────────┘                                        │
-│             │ 触发查询                                           │
-│             ▼                                                   │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │                  故事选择器 (Story Selector)             │    │
-│  │                                                         │    │
-│  │  候选池 = 条件满足 + llm_trigger 语义匹配               │    │
-│  │                                                         │    │
-│  │  选择策略（已实现）：                                    │    │
-│  │   · Landmark 约束 ← 标签过滤，保证主线推进              │    │
-│  │   · Salience 评分 ← base + modifiers                   │    │
-│  │   · LLM 评估器   ← Top-3 候选（默认关闭）               │    │
-│  └──────────┬──────────────────────────────────────────────┘    │
-│             │ 选出目标 Storylet                                  │
-│             ▼                                                   │
-│  ┌─────────────────────┐                                        │
-│  │   Storylet 执行器   │  ← DRAMA LLAMA 发言决策                │
-│  │  (Executor)         │    三步生成：内心独白→行为选择→台词/动作  │
-│  └──────────┬──────────┘                                        │
-│             │ 执行 Effects → 更新世界状态（首次进入时执行一次）   │
-│             ▼                                                   │
-│        [下一轮交互]                                              │
+│                   前端交互层 (React + TypeScript)                 │
+│  ┌─────────────────────────┐  ┌──────────────────────────────┐  │
+│  │      Design 模式         │  │          Play 模式            │  │
+│  │  LandmarkCanvas (DAG)   │  │  ChatLog + InputBar          │  │
+│  │  Inspector (属性编辑)    │  │  DebugPanel (状态调试)       │  │
+│  │  Zustand (useProjectStore)│ │  Zustand (usePlayStore)      │  │
+│  └─────────────────────────┘  └──────────────────────────────┘  │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │  WebSocket JSON (全双工)
+                               │  ws://localhost:8000/ws/play
+┌──────────────────────────────▼──────────────────────────────────┐
+│               后端通信层 (FastAPI + uvicorn)                      │
+│               ws_server.py  /ws/play  /api/health                │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────┐
+│                  游戏会话层 (GameSession)                         │
+│  管理单次 WebSocket 连接的完整游戏会话生命周期                    │
+│  协调各核心模块间的数据流转与异步 LLM 调用                        │
+├────────────────────┬─────────────────────┬───────────────────────┤
+│   叙事骨架层(只读)  │    内容生成层(运行时) │    状态管理层          │
+│                    │                     │                       │
+│  LandmarkManager   │  InputParser        │  WorldState           │
+│  StoryletManager   │  DirectorAgent      │   - Qualities         │
+│  StorySelector     │  CharacterAgent × N │   - Flags             │
+│                    │  LLMClient          │   - Relationships     │
+│  [DAG · 预设计]    │  [LLM驱动 · 多Agent] │  StateManager         │
+└────────────────────┴─────────────────────┴───────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────┐
+│              叙事推进引擎 (CLI 模式专用)                           │
+│  GameEngine + GameEventLoop                                      │
+│  三轨并发：player_input_loop / narrative_push_loop / event_consumer│
 └─────────────────────────────────────────────────────────────────┘
 ```
 
----
+### 2.2 运行时数据流（完整交互回合）
 
-## 三、核心模块详解
-
-### 3.1 输入解析模块（Input Parser）
-
-**职责**：玩家输入的守门人，不做结构化意图分类（CharacterAgent/Director 自行理解原文）。
-
-**两大方法**：
-- `validate_input()`：规则层（正则过滤 meta/暴力/超长）+ LLM 语义合法性判断
-- `analyze()`：合并合法性检查与语义条件匹配（Storylet `llm_trigger` + Landmark `llm_semantic`），**一次 LLM 调用**
-
-**分发逻辑**：
 ```
-hard reject → 忽略输入（不生成角色响应）
-soft reject → 角色困惑反应（注入 Director 指令）
-valid       → 正常流程（matched_semantic_ids 驱动下游选择）
-```
-
-**剪枝策略**：只收集当前 Landmark 范围内的语义条件（Storylet `llm_trigger` + 出边 `llm_semantic`），通常 2~15 条。
-
-**SemanticConditionStore**：条件索引接口，当前全量列表实现，`search()` 可替换为向量检索，上层代码无需改动。
-
-**设计要点**：
-- 不再做结构化意图分类（intent/target/topic_tags），因为无下游消费者
-- 旧设计中每个 `llm_trigger` Storylet 单独调 LLM，现在合并为 1 次
-- 参考 DRAMALLLAMA 的自然语言 precondition 判断方式
-
----
-
-### 3.2 世界状态模型（World State）
-
-这是系统的"记忆"，也是 Storylet 条件判断的依据。
-
-**状态分类**（参考 Emily Short + Kreminski 论文）：
-
-| 类型 | 示例变量 | 说明 |
-|------|---------|------|
-| **Metrics（进度类）** | `story_phase`（1-5）, `landmark_reached` | 剧情阶段，确保主线推进 |
-| **关系数值** | `trip_trust`, `grace_intimacy`, `marriage_tension` | 角色对玩家/彼此的感受 |
-| **情绪状态** | `trip_anger`, `grace_anxiety`, `grace_withdrawn` | 角色当前情绪 |
-| **揭露标记** | `secret_hinted`, `affair_revealed`, `confronted_trip` | 关键信息是否已揭露 |
-| **Currencies（资源类）** | `player_credibility`, `conversation_turns` | 玩家"信用"、对话轮数等 |
-| **Menaces（威胁类）** | `relationship_crisis_level` | 整体叙事张力 |
-
-**更新规则**：
-- 每次 Storylet 执行后，通过 Effects 更新
-- 玩家输入解析后也会直接影响部分变量（如情绪）
-- LLM 角色 Agent 的行为也可以触发变量变化
-
----
-
-### 3.3 Storylet 数据结构
-
-这是系统的**最小可玩叙事单元**，对玩家体验而言就是一个"叙事目标"。
-
-```json
-{
-  "id": "sl_grace_hinting_at_secret",
-  "title": "Grace 的欲言又止",
-  "phase_tags": ["act1", "tension_building"],
-  "narrative_goal": "玩家感知到 Grace 想说什么但被 Trip 打断",
-
-  "conditions": [
-    { "type": "quality_check", "key": "story_phase", "op": ">=", "value": 1 },
-    { "type": "quality_check", "key": "grace_trust", "op": ">=", "value": 3 },
-    { "type": "flag_check", "key": "secret_hinted", "op": "==", "value": false }
-  ],
-
-  "llm_trigger": "玩家是否在尝试与 Grace 单独交流，或者话题涉及了婚姻关系？",
-
-  "content": {
-    "type": "llm_prompt",
-    "director_note": "Grace 想透露一些关于婚姻问题的信息，但 Trip 会打断。这一幕应该制造悬念和压迫感。",
-    "tone": "tense, slightly desperate",
-    "character_focus": "Grace"
-  },
-
-  "choices_hint": [
-    "追问 Grace",
-    "质疑 Trip 的打断",
-    "假装没注意到"
-  ],
-
-  "effects": [
-    { "key": "secret_hinted", "op": "=", "value": true },
-    { "key": "grace_trust", "op": "+", "value": 1 },
-    { "key": "relationship_crisis_level", "op": "+", "value": 0.5 }
-  ],
-
-  "repeatability": "never",
-
-  "salience": {
-    "base": 8,
-    "modifiers": [
-      { "key": "grace_intimacy", "bonus": 3 },
-      { "key": "trip_anger", "penalty": -2 }
-    ]
-  }
-}
+玩家自然语言输入
+        │
+        ▼
+┌─────────────────────────────────────┐
+│  InputParser.analyze()              │
+│  · 规则层：meta检测 / 物理违规过滤  │
+│  · LLM层：语义合法性判断            │
+│  · 语义条件匹配（批量一次调用）     │
+│  输出: valid + matched_semantic_ids │
+└──────────────┬──────────────────────┘
+               │
+       ┌───────┴───────┐
+       │ hard/soft     │  valid
+       │ 拒绝          │
+       ▼               ▼
+  忽略/困惑反应   ┌──────────────────────┐
+                 │   StorySelector       │
+                 │  · 标签过滤           │
+                 │  · 条件过滤           │
+                 │  · llm_trigger 匹配   │
+                 │  · Salience 评分排序  │
+                 └──────────┬───────────┘
+                            │  选出 Storylet
+                            ▼
+                 ┌──────────────────────┐
+                 │   DirectorAgent       │
+                 │  · generate_beat_plan │
+                 │  · GoalTracker        │
+                 │  · InstructionGenerator│
+                 │  输出: BeatPlan序列   │
+                 └──────────┬───────────┘
+                            │  逐 Beat 执行
+                            ▼
+                 ┌──────────────────────┐
+                 │  CharacterAgent × N   │
+                 │  Step0: 内心独白      │
+                 │  StepA: 行为选择      │
+                 │  StepB: 台词/动作生成 │
+                 └──────────┬───────────┘
+                            │
+                            ▼
+                 ┌──────────────────────┐
+                 │   后处理              │
+                 │  · 执行 Effects       │
+                 │  · 检查 Landmark 推进 │
+                 │  · 更新 WorldState   │
+                 │  · 推送 state_update  │
+                 └──────────────────────┘
+                            │
+                            ▼
+                       输出给玩家（WebSocket / CLI）
 ```
 
 ---
 
-### 3.4 故事选择器（Story Selector）
+## 三、叙事骨架层（Narrative Skeleton Layer）
 
-**这是系统的核心调度逻辑**，决定"现在该发生什么"。
+叙事骨架层是系统的核心基础设施，负责维护故事的高层结构约束。该层在运行时保持只读状态，确保叙事始终沿预设的戏剧性弧线推进。
 
-#### 选择流程（三层过滤）：
+### 3.1 Landmark（叙事阶段节点）
+
+Landmark 是剧情的阶段级锚点，以**有向无环图（DAG）**结构组织，定义故事的高层走向与关键转折点。每个 Landmark 代表一个叙事阶段，控制该阶段内可用的 Storylet 范围与信息揭露边界。
+
+**关键属性：**
+
+| 属性                          | 说明                                             |
+| ----------------------------- | ------------------------------------------------ |
+| `id`                          | 唯一标识，格式 `lm_x_xxx`                        |
+| `title`                       | 阶段名称                                         |
+| `phase_tag`                   | 阶段标签（act1/act2/act3/act4）                  |
+| `transitions`                 | 出边列表，声明推进到后续阶段的条件规则            |
+| `narrative_constraints`       | 叙事约束：`allowed_storylet_tags` / `forbidden_reveals` |
+| `world_state_effects_on_enter`| 进入该阶段时自动触发的世界状态变更                |
+| `fallback_storylet`           | 无候选 Storylet 时的兜底方案                     |
+| `is_ending`                   | 是否为结局节点（统一建模，无需独立结局处理逻辑）  |
+| `ending_content`              | 结局节点的叙事文本                               |
+
+**转场条件（OR 语义，任一满足即推进）：**
 
 ```
-Step 1: 条件过滤
-  → 遍历所有 Storylets，筛出 Conditions 满足的候选集
-
-Step 2: Landmark 约束
-  → 若当前有"必须推进"的 Landmark，优先级提升相关 Storylets
-  → 防止剧情永远停留在某个阶段
-
-Step 3: Salience 评分 + LLM 评估
-  → 计算每个候选的 Salience 得分
-  → 可选：用 LLM 对 Top-K 候选做最终"戏剧合理性"判断
-  → 选出最高分的 Storylet 执行
+1. world_state 条件：指定 flag/quality 组合（AND 语义）
+2. or_turn_limit：回合数达到上限（防卡死兜底）
+3. or_player_input：玩家输入关键词精确匹配
+4. llm_semantic：玩家输入语义匹配（由 InputParser.analyze() 统一判断）
 ```
 
-#### LLM 评估器（可选但推荐）Prompt 示意：
-```
-当前世界状态: [trip_anger=7, grace_withdrawn=true, secret_hinted=true...]
-当前对话上下文: [最近3轮玩家输入与角色回应]
-候选 Storylets: [A: 大爆发冲突, B: Grace 独白, C: Trip 转移话题]
+**Facade 剧情 Landmark DAG（当前内置场景）：**
 
-请从戏剧节奏和叙事合理性角度，判断此刻哪个 Storylet 最适合触发？
-输出格式: { "choice": "A", "reason": "..." }
 ```
+lm_1_arrive（做客·初见）
+     │
+     ▼
+lm_2_cracks（关系裂缝）
+     │
+     ├──→ lm_3a_trip（Trip 坦白路线）  ← 玩家追问 Trip 触发
+     │
+     └──→ lm_3b_grace（Grace 揭露路线）← 玩家私下问 Grace 触发
+               │
+               ▼
+          lm_4_resolve（摊牌与抉择）
+               │
+               ├──→ lm_5a_reconciliation（和解结局）
+               │
+               └──→ lm_5b_breakup（破裂结局）
+```
+
+### 3.2 Storylet（叙事片段单元）
+
+Storylet 是最小可执行的叙事单元，通常持续 3～8 轮对话，提供一个具体叙事目标。它既是内容调度的基本单位，也是世界状态变更的触发载体。
+
+**与 Landmark 的关系：**
+- Landmark 定义"当前阶段允许哪类叙事内容"（通过标签约束）
+- Storylet 是该阶段内具体可执行的叙事事件
+- 每个 Landmark 配备 2～5 个专用 Storylet + 1 个通用兜底
+
+**关键字段分类：**
+
+| 类别   | 字段                                         | 说明                              |
+| ------ | -------------------------------------------- | --------------------------------- |
+| 身份   | id, title, phase_tags, narrative_goal        | 基本描述与叙事目标                |
+| 前置   | conditions, llm_trigger                      | 结构性触发条件 + 语义触发描述     |
+| 内容   | director_note, tone, character_focus         | 导演注释与情绪基调                |
+| 后置   | effects, conditional_effects                 | 世界状态变更效果                  |
+| 调度   | salience, repeatability, sticky, cooldown    | 选择优先级与重复策略              |
+| 结束   | completion_trigger, force_wrap_up            | 自然/强制结束条件                 |
+
+### 3.3 StorySelector（场景选择器）
+
+StorySelector 负责在每个交互回合中从候选 Storylet 集合中选出最适合当前叙事情境的场景执行，采用**三层过滤 + Salience 评分**策略：
+
+```
+所有 Storylet
+     │
+     ├── Step 1: 标签过滤 ── current_landmark.allowed_storylet_tags
+     │
+     ├── Step 2: 条件过滤 ── storylet.can_trigger()（flag/quality/cooldown）
+     │              + llm_trigger 必须出现在 matched_semantic_ids 中
+     │
+     ├── Step 3: Salience 评分 ── base + modifiers（世界状态驱动）
+     │              + priority_override（优先级覆盖，用于关键剧情点）
+     │
+     ├── Step 4: LLM 评估（可选，当前默认关闭 use_llm_evaluator=False）
+     │              取 Top-3 交由 LLM 二次评估选最优
+     │
+     └── 无候选时：使用 current_landmark.fallback_storylet
+```
+
+### 3.4 WorldState（世界状态）
+
+WorldState 是系统的**共享叙事黑板（Narrative Blackboard）**，所有 Agent 的条件判断、效果触发均基于此进行。
+
+| 状态类型       | 示例                          | 说明                                |
+| -------------- | ----------------------------- | ----------------------------------- |
+| Qualities      | `tension`, `grace_trust`      | 数值型状态，支持比较与累加操作      |
+| Flags          | `arrived`, `trip_confessed`   | 布尔型标记，记录关键叙事事件是否发生 |
+| Relationships  | `trip_to_player`, `grace_to_player` | 角色间关系数值                |
+
+**更新来源：**Storylet effects（场景切换时触发）、conditional_effects（条件满足时触发）、Landmark 进入效果（阶段推进时触发）、Beat delta（逐节拍增量更新，CLI 模式）。
 
 ---
 
-### 3.5 角色 Agent（Character Agents）✅ 已实现
+## 四、内容生成层（Content Generation Layer）
 
-每个 NPC（父亲赵建国 / 母亲林美华）是一个独立的 LLM Agent，实现了**三步生成架构**：
+内容生成层采用多智能体协作架构，模拟戏剧制作中的导演与演员关系，实现叙事规划与角色扮演的职责分离。
 
-**Step 0 — 内心独白（`_generate_inner_thought()`）**
-- 角色先"想"再"说"，内心独白不等于说出口的话（心口不一）
-- 温度 0.75，保留情感张力
-- 注入后续步骤作为上下文约束
+### 4.1 InputParser — 输入守门人
 
-**Step A — 行为选择（`_select_behavior()`）**
-- 从 `data/character_behaviors.py` 中选择一个叙事行为 ID
-- 参考 StoryVerse Action Schema：15 种行为，父亲10种/母亲10种
-- Storylet 可通过 `allowed_behaviors` 字段约束当前可用行为
-- 温度 0.1，确定性选择
+**文件：** `prototype/facade_remake/agents/input_parser.py`
 
-**Step B — 台词/动作生成（主体）**
-- **系统 Prompt 包含**：角色身份+性格+背景 + 秘密知识 + 叙事目标 + 导演指令 + 情绪基调 + 行为模式指令 + 内心独白上下文 + 禁止话题
-- 近期对话记忆（最近 6 条，IBSEN 风格结构化历史）
-- **输出格式**：`{"speech": "...", "action": "*肢体动作*"}`
-- IBSEN 式 NG words 检测（重试最多 3 次）+ 重复检测
+InputParser 是玩家输入进入系统的统一入口，承担两大核心职责：
 
-**DRAMA LLAMA 发言决策（`_decide_speakers()`）**：
-- 每轮由 LLM 决定哪个（些）角色回应及顺序
-- 而非预设 `character_focus` 固定一个角色
-- 决策失败时 fallback 到旧 `character_focus` 字段（向后兼容）
+#### 职责一：合法性检查（`validate_input()`）
+
+```
+玩家输入
+     │
+     ▼
+第一层：规则层（零 LLM 成本）
+     ├── Meta 输入（"你是AI/游戏"） → soft reject, response_mode=deflect
+     ├── 物理违规（砸/打/跳窗）      → hard reject, response_mode=ignore
+     └── 超长输入（>200字符）        → soft reject, response_mode=confused
+     │ 规则层无法判断时
+     ▼
+第二层：LLM 语义判断
+     └── 场景约束 + 当前语境 → valid / severity / reason
+```
+
+**分发策略：**
+
+| 结果         | severity | 系统行为                              |
+| ------------ | -------- | ------------------------------------- |
+| hard reject  | hard     | 忽略输入，不生成角色响应              |
+| soft reject  | soft     | 角色困惑反应（注入 Director 特殊指令）|
+| valid        | —        | 进入正常处理流程                      |
+
+#### 职责二：语义条件匹配（`analyze()`）
+
+将当前 Landmark 范围内的所有 Storylet `llm_trigger` 与 Landmark 转场的 `llm_semantic` 条件**合并为单次 LLM 调用**，同时完成合法性检查与条件匹配：
+
+```
+InputParser.analyze(player_input, conditions, context)
+     │
+     ├── conditions 为空 → 仅执行合法性检查
+     │
+     ├── 规则层 hard reject → 直接返回，不执行条件匹配
+     │
+     └── LLM 统一判断：
+         ├── 任务1：输入是否合法？
+         └── 任务2：匹配哪些语义条件？→ matched_semantic_ids
+```
+
+**条件剪枝策略：** 只收集当前 Landmark 范围内的语义条件（2～15 条），避免全量语义检索的计算开销。
+
+**SemanticConditionStore：** 条件索引接口，当前以全量列表实现，`search()` 接口预留向量检索扩展能力，上层代码无需改动。
+
+### 4.2 DirectorAgent — 叙事导演
+
+**文件：** `prototype/facade_remake/agents/director.py`
+
+DirectorAgent 参考 IBSEN 论文的 Director-Actor 分离架构，但采用**间接控制**而非直接脚本控制：Director 只给出情绪基调与行为方向，不直接生成台词。
+
+#### 内部核心组件
+
+**GoalTracker（目标追踪器）：** 追踪当前 Storylet 的叙事目标进度。每回合调用 `advance_turn()` 更新进度状态（IN_PROGRESS / NEARLY_COMPLETE / COMPLETE / FAILED）。当目标干预次数 ≥ 3 次时标记 FAILED，触发叙事干预机制。
+
+**InstructionGenerator（指导生成器）：** 基于当前 Storylet 内容、世界状态与对话历史，生成 `DirectorInstruction` 对象，包含叙事节奏（push/maintain/release/accelerate）、情绪基调指导、角色特定指令与禁忌话题列表。
+
+**DirectorAgent（协调器）：** 提供两种工作模式：
+- **LLM 模式**（`use_llm=True`）：调用 LLM 生成精细化导演指导
+- **规则模式**（`use_llm=False`）：纯规则生成，零 API 消耗
+
+#### BeatPlan 生成
+
+DirectorAgent 在场景切换或玩家输入后调用 `generate_beat_plan()`，生成当前叙事节拍序列。每个 Beat 包含：
+
+| 字段               | 说明                              |
+| ------------------ | --------------------------------- |
+| `speaker`          | 发言者（trip/grace/narrator/player_turn） |
+| `addressee`        | 接收者（player/grace/trip/all）   |
+| `intent`           | 叙事意图描述                      |
+| `urgency`          | 紧迫程度（high/medium/low）       |
+| `world_state_delta`| 预测的世界状态变化                |
+| `state_change_hint`| 状态变化提示（用于 CLI 显示）     |
+
+#### 发言决策（`decide_speakers()`）
+
+采用 DRAMA LLAMA 风格的动态发言角色决策，五级优先规则：
+1. **玩家点名** → 被点名角色必须回应
+2. **对话平衡** → 最近 8 条历史中发言差值 > 2 时触发平衡干预
+3. **叙事目标** → 回应服务于当前 Storylet 的 narrative_goal
+4. **自然度** → 通常 1 人回应最自然，2 人需理由
+5. **沉默权利** → 非发言角色可仅做肢体动作
+
+### 4.3 CharacterAgent — 角色扮演者
+
+**文件：** `prototype/facade_remake/agents/character_agent.py`
+
+每个角色（Trip、Grace）拥有独立的 CharacterAgent 实例，实现**三步生成架构**，参考 DRAMA LLAMA + StoryVerse + IBSEN 的设计：
+
+#### Step 0：内心独白（`_generate_inner_thought()`）
+
+- **目的：** 让角色先构建内心想法，支持心口不一的表现
+- **Temperature：** 0.75（保留情感张力）
+- **输出：** 1～2 句第一人称内心独白，注入后续步骤作为隐性上下文
+- **Monologue 选择：** 扫描玩家输入关键词 → 情绪状态映射 → 选择对应的 IBSEN Monologue 模板；无匹配时 LLM 自动选择
+
+#### Step A：行为选择（`_select_behavior()`）
+
+- **目的：** 从预定义行为库选择一个叙事行为 ID（StoryVerse Action Schema 风格）
+- **Temperature：** 0.1（确定性选择）
+- **行为库：** 共 15 种行为（deflect/go_quiet/admit/cold_truth 等），Storylet 可通过 `allowed_behaviors` 字段约束可选范围
+- **Salience Boost：** 特定行为携带 Salience 加成（admit: +5, cold_truth: +5）
+
+#### Step B：台词/动作生成（主体）
+
+- **Temperature：** 0.6
+- **输入构建：** 角色档案 + 秘密知识 + 内心独白（Step 0）+ 行为模式（Step A）+ 导演指令 + IBSEN 结构化对话历史
+- **IBSEN 对话历史：** 自身发言映射为 `assistant`，其余所有发言（含玩家）映射为 `user`，以 `__INPUT__` 行标记待回复的玩家输入
+- **输出格式：** `{"dialogue": str, "action": str, "thought": str}`
+
+#### IBSEN 式质量防护机制
+
+```
+LLM 原始输出
+     │
+     ├── NG words 检测 → 重试（最多 3 次）+ system 追加提示
+     ├── 关键词冲突检测（玩家问A但回B）→ 降温重试（temperature=0.3）
+     ├── 重复检测（字符重叠率 > 50%）→ 截断历史重生成
+     ├── JSON 格式校验 → 结构重试
+     └── 角色名前缀清理（trip:/grace:/特拉维斯: 等）
+```
+
+### 4.4 LLMClient — LLM 调用统一接口
+
+**文件：** `prototype/facade_remake/agents/llm_client.py`
+
+封装 OpenAI API 兼容格式的调用逻辑，支持 GPT-4o / GPT-4o-mini / DeepSeek 等多模型服务商。提供：
+- `call_llm(prompt, max_tokens, temperature)` — 单轮对话
+- `chat_completion(messages)` — 多轮对话
+- `on_debug` 回调接口 — WebSocket 模式下实时推送 LLM 调试信息到前端
+
+**异步策略：** LLM 调用为同步阻塞，通过 `asyncio.run_in_executor()` 放入线程池执行，避免阻塞主事件循环。
 
 ---
 
-### 3.6 Landmark 系统（主线锚点）
+## 五、叙事推进引擎（Narrative Engine，CLI 模式）
 
-这是叙事设计师**提前设计的故事骨干**，保证无论玩家如何互动，剧情都能到达关键节点。
+叙事推进引擎基于 asyncio 异步事件循环实现，是命令行模式下的核心调度中心，协调三条并发执行轨道。
 
-#### Landmark 的本质
+### 5.1 GameEngine — 核心业务引擎
 
-Landmark 是**叙事控制层**，不是可执行的叙事单元：
+**文件：** `prototype/facade_remake/engine/game_engine.py`
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    叙事架构分层（简化版）                      │
-├─────────────────────────────────────────────────────────────┤
-│  固定层：Landmarks（预先设计，决定结局分支）                   │
-│  · 粗粒度剧情节点                                             │
-│  · 控制当前可用的 Storylet 标签                               │
-│  · 运行时只读，不生成                                         │
-├─────────────────────────────────────────────────────────────┤
-│  动态层：Storylets（预设计 + 可选实时生成）                    │
-│  · 具体的叙事单元                                             │
-│  · 预设计：每个 Landmark 配 5-15 个 Storylets                 │
-│  · 实时生成：处理边缘情况                                     │
-└─────────────────────────────────────────────────────────────┘
-```
+GameEngine 封装所有游戏核心业务逻辑，通过 DIContainer 依赖注入容器统一管理各模块实例，消除循环依赖：
 
-> **一句话**：Landmark 是"导演喊卡"的机制——它不说戏怎么演（那是 Storylet 的事），但它决定"现在演到哪一幕"和"这一幕可以演什么类型的戏"。
+- **`handle_player_input()`：** 处理玩家输入，流程为：输入验证 → 状态计数更新 → Beat delta 计算 → 调解行为检测 → 转场检查 → BeatPlan 刷新
+- **`handle_player_silence()`：** 处理玩家沉默，与输入处理流程类似，但跳过合法性检查
+- **`handle_auto_beat()`：** 执行当前 Beat，调用 CharacterAgent 生成响应，更新 beat_index
+- **`_switch_to_storylet()`：** 场景切换，应用效果、重置计数、刷新 BeatPlan、触发过渡 Beat
+- **`_check_and_handle_transitions()`：** 检查 Landmark/Storylet 转场条件，触发阶段推进
 
-**关键设计**：Landmark 层保持简单固定，动态性全部下沉到 Storylet 层。
+**Beat Delta 双轨机制：**
+- **Storylet 级效果**：场景切换时一次性应用（`=` 操作，设定状态值）
+- **Beat 级增量**：每次 Beat 执行后累积计算（基于 effect_trends + player_input 上下文）
 
-#### Landmark 数据结构
+### 5.2 GameEventLoop — 异步事件循环
 
-```json
-{
-  "id": "lm_2_secret_revealed",
-  "title": "秘密揭露",
-  "description": "父母婚姻危机的核心秘密被部分揭露",
-  "phase_tag": "act2",
-  "order": 2,
-  
-  "entry_conditions": {
-    "world_state": [
-      { "key": "marriage_tension", "op": ">=", "value": 6 }
-    ],
-    "or_player_input": [
-      "直接询问父母关系",
-      "提及看到/听到了什么"
-    ]
-  },
-  
-  "narrative_constraints": {
-    "allowed_storylet_tags": ["secret_related", "confrontation", "emotional"],
-    "forbidden_reveals": [],
-    "required_mood": "tense",
-    "max_sticky_storylets": 3
-  },
-  
-  "progression_rules": {
-    "advance_when": {
-      "world_state": { "secret_exposed": true },
-      "or_turn_limit": 15,
-      "or_player_input": ["明确表态", "情绪爆发", "离开现场"]
-    },
-    "next_landmark": "lm_3_taking_sides",
-    "fallback_after_turns": 20
-  },
-  
-  "fallback_storylet": "sl_force_secret_reveal",
-  
-  "world_state_effects_on_enter": [
-    { "key": "current_landmark", "op": "=", "value": 2 },
-    { "key": "story_phase", "op": "=", "value": "act2" }
-  ]
-}
-```
+**文件：** `prototype/facade_remake/engine/event_loop.py`
 
-#### 关键字段解释
-
-| 字段 | 作用 |
-|------|------|
-| `entry_conditions` | 什么时候从上一个 Landmark 进入这个 |
-| `narrative_constraints` | **核心**：限制当前阶段只能选哪些 Storylet |
-| `progression_rules` | 什么时候推进到下一个 Landmark |
-| `fallback_storylet` | 如果玩家一直不触发关键条件，强制推进 |
-| `world_state_effects_on_enter` | 进入时自动更新的世界状态 |
-
-#### Landmark 与 Storylet 的关系
+GameEventLoop 封装所有 asyncio 逻辑，通过 `asyncio.gather()` 并行运行三条协程：
 
 ```
-Landmark 0: 表面平静
-    │
-    │ 约束：只允许 "dinner_chat", "small_talk", "subtle_tension" 类 Storylet
-    │
-    ▼ 玩家输入触发 entry_conditions
-Landmark 1: 第一次裂缝
-    │
-    │ 约束：允许 "deflection", "evasion", "minor_conflict" 类 Storylet
-    │       禁止直接揭露秘密
-    │
-    ▼ 达到 progression_rules
-Landmark 2: 秘密揭露
-    │
-    │ 约束：允许 "confrontation", "emotional_breakdown", "partial_truth" 类 Storylet
-    │
-    ▼ ...
+asyncio.gather(
+    _player_input_loop(),     // 输入轨道
+    _narrative_push_loop(),   // 叙事推进轨道
+    _event_consumer(),        // 事件消费轨道
+)
 ```
 
-#### Facade 的 Landmark 示例设计
+| 协程                    | 职责                                                        |
+| ----------------------- | ----------------------------------------------------------- |
+| `_player_input_loop()`  | 从线程池异步读取玩家输入，支持 quit/status 命令，投递事件队列 |
+| `_narrative_push_loop()`| 按 BeatPlan 序列自动推进，处理 player_turn 超时（45秒后催促，再30秒后视为沉默）|
+| `_event_consumer()`     | 消费事件队列，将 player_input/player_silence/auto_beat 事件分发给 GameEngine |
 
-```
-Landmark 0: 初始状态 — 玩家被邀请来拜访
-      ↓
-Landmark 1: 第一层紧张 — 察觉到 Trip & Grace 之间有问题
-      ↓
-Landmark 2: 矛盾显现 — Trip 或 Grace 的情绪爆发一次
-      ↓
-Landmark 3: 秘密揭露 — 婚姻危机根源被点名（可由玩家引导或自然爆发）
-      ↓
-Landmark 4: 危机顶点 — 三方关系摊牌
-      ↓
-Landmark 5a: 结局 — 玩家被赶出去
-Landmark 5b: 结局 — 某种程度的和解
-Landmark 5c: 结局 — Grace 做出决定
-```
-
-**Landmark 推进条件**：
-- 基于世界状态的量化条件（如 `relationship_crisis_level >= 4`）
-- 或由玩家的某类关键输入触发（如直接问出某个话题）
-- Landmark 之间允许大量 Storylets 自由填充
+**同步机制：** 通过 `beat_done_event`（asyncio.Event）实现叙事推进轨道与事件消费轨道的 Beat 完成同步。
 
 ---
 
-## 四、数据流全链路图
+## 六、状态与数据管理层（State Management Layer）
 
-```
-玩家输入 "你们之间到底发生了什么"
-         │
-         ▼
-    [Input Parser] ── analyze()
-    → valid: true
-    → matched_semantic_ids: ["sl_first_crack", "lm1→lm2"]
-         │
-         ▼ matched_semantic_ids 驱动选择
-    [Story Selector]
-    候选集: [sl_grace_evasion, sl_trip_deflects, sl_first_crack]
-    Salience 评分后 → 选中: sl_first_crack (Grace 第一次裂缝)
-         │
-         ▼
-    [Executor]
-    注入 Director Note: "Grace 短暂透露了一点真实情绪，但立刻收回"
-    注入角色状态: grace_anxiety=6, trip_anger=5
-         │
-         ▼
-    [LLM Grace Agent] → 生成 Grace 的回应
-    [LLM Trip Agent]  → 生成 Trip 的打断/转移
-         │
-         ▼
-    执行 Effects: secret_hinted=true, relationship_crisis_level += 0.3
-         │
-         ▼
-    [Landmark 推进检查]
-    matched_semantic_ids 含 "lm1→lm2" → 满足 llm_semantic 条件 → 推进
-         │
-         ▼
-    输出给玩家（文字/语音/动画）
-```
+### 6.1 WorldState — 世界状态容器
 
----
+**文件：** `prototype/facade_remake/core/world_state.py`
 
-## 五、关键设计取舍讨论
+WorldState 以 Python dataclass 管理三类状态变量，提供统一读写接口：
 
-### 5.1 Storylet 的粒度
-
-**问题**：一个 Storylet 应该多大？
-
-**建议**：
-- 最小：一次有意义的情感交换（约 3-8 轮对话）
-- 最大：一个小场景（约 10-20 轮对话）
-- 每个 Storylet **给玩家一个明确的叙事目标感**（"我想知道 Grace 刚才说的是什么意思"）
-
-### 5.2 LLM 评估器的开销
-
-**问题**：每次选择 Storylet 都用 LLM 评估会不会太慢？
-
-**建议**：
-- 默认用规则 Salience 评分（极快）
-- 仅当候选集 Top-3 分数接近时，才调用 LLM 评估器
-- 或：每隔 N 轮才重新评估一次
-
-### 5.3 LLM 幻觉与剧情漂移
-
-**问题**：LLM 可能生成超出 Director Note 范围的内容。
-
-**建议**（参考 Triangle Framework 论文的 landmark adherence 机制）：
-- Executor 层加入输出校验（检查关键标记词是否被提前揭露）
-- 设置"信息防火墙"：当前 Landmark 以外的信息不允许出现在 prompt 上下文中
-- 必要时用轻量 LLM 做内容审查（二次过滤）
-
-### 5.4 玩家能动感 vs. 剧情控制
-
-**Jon Ingold 的核心原则**（你笔记中）：
-> "Agency is the range we give the player, not the range the player wants."
-
-本系统的做法：
-- 玩家可以用任何自然语言，但 Input Parser 会把它映射到有限的"叙事动作集"
-- 玩家感觉自由，系统实际上在一个可控的状态空间内运行
-- 配合"选择幻觉"研究结论：只要玩家的行为被"正面反馈和承认"，代理感就很强
-
----
-
-## 六、技术栈（已确定）
-
-| 模块 | 已实现方案 | 备注 |
-|------|-----------|------|
-| 世界状态存储 | Python dataclass（WorldState） | qualities/flags/relationships |
-| Storylet 数据 | Python dict 列表 | `data/default_storylets.py` |
-| LLM 调用 | OpenAI API（兼容格式） | 无 API key 时 mock 模式 |
-| 角色 Agent | 自定义三步生成 prompt 链 | 内心独白→行为选择→台词/动作 |
-| 行为库 | `data/character_behaviors.py` | 15种行为，StoryVerse 设计 |
-| 前端演出 | 文字终端 CLI | `python main.py` |
-| 叙事编辑工具 | 暂无可视化工具 | 后续可扩展 |
-
----
-
-## 七、开发阶段进度
-
-```
-✅ 阶段 0（纯文字 CLI）：
-  - 18 个 Storylets（15具体 + 3兜底）
-  - 规则 World State（Python dataclass）
-  - 规则 Salience 选择
-  - 验证：基本流程已跑通
-
-✅ 阶段 1（引入 LLM）：
-  - Input Parser 用 LLM
-  - 角色 Agent 三步生成（内心独白→行为选择→台词/动作）
-  - DRAMA LLAMA 发言角色自决
-  - 行为库（15种行为，StoryVerse Action Schema）
-  - 验证：对话有 Facade 的心口不一感
-
-✅ 阶段 2（引入 Landmark）：
-  - 完整三幕结构的 Landmarks（4个阶段 + 4个结局）
-  - 18 个 Storylets，llm_trigger 语义触发已实现
-  - 主线推进已实现（回合兜底 + 条件推进）
-
-⏳ 阶段 3（评估与调优）：
-  - LLM 评估器代码已实现，默认关闭（use_llm_evaluator=False）
-  - 待调试主线剧情后开启，测试玩家自主感
-
-⏳ 阶段 4（演出层）：
-  - Unity 对接方案已设计（见 ARCHITECTURE.md 9.x）
-  - 当前以终端 CLI 为主
-```
-
----
-
-## 八、关键设计决策记录
-
-以下是框架中的关键设计选择，已决定的标注 ✅：
-
-1. **故事设定** ✅：赵建国/林美华家庭情感互动（非原版 Trip/Grace），父亲瞒家人借款30万
-2. **Storylet 触发方式** ✅：Salience 自动触发 + `llm_trigger` 语义辅助（无强制玩家选项）
-3. **LLM 评估器** ✅：代码已实现，原型阶段关闭，后续开启
-4. **多玩家/单玩家** ✅：单玩家（儿子视角）
-5. **重玩性设计** ✅：Storylet repeatability 策略（never/unlimited/cooldown）+ 多结局设计
-6. **叙事设计工具链** ⏳：当前无可视化工具，数据以 Python dict 编写
-
----
-
----
-
-## 九、架构通用性设计备忘（2026-03-28）
-
-> 来源：与 StoryVerse 论文对照讨论后的结论
-
-### 9.1 设计目标
-
-本系统架构目标为**通用叙事引擎内核（Generic Narrative Engine）**，当前以家庭情感互动（FacadeRemake）作为验证案例，但设计上不依赖特定场景，具备扩展至多角色、多地点叙事场景的潜力。
-
-### 9.2 待实施的通用化改造点
-
-#### 改造 1：目录结构分离引擎层与场景数据层（低成本，高信号价值）
-```
-prototype/
-  engine/            ← 通用引擎层（不含任何场景特定内容）
-    core/            ← WorldState, Storylet, Landmark, StorySelector
-    agents/          ← LLMClient, CharacterAgent, InputParser
-  scenarios/
-    facade_remake/   ← 当前家庭情感场景的所有数据
-      config/        ← characters.py（角色配置）
-      data/          ← default_storylets.py, default_landmarks.py
-    # 未来可新增：
-    # open_world_demo/
-    # mystery_game/
-```
-目录结构本身就在论文中证明架构的通用性，无需额外说明。
-
-#### 改造 2：角色由硬编码改为可注册（中等成本）
 ```python
-# 当前：characters.py 中写死两个角色
-# 目标：CHARACTER_REGISTRY 字典，可注册任意数量角色
-CHARACTER_REGISTRY = {
-    "zhao_jianguo": CharacterConfig(...),
-    "lin_meihua": CharacterConfig(...),
-    # 开放世界版可以有 N 个角色
-}
+# 状态读写接口
+get_quality(key) / set_quality(key, value)
+get_flag(key)   / set_flag(key, value)
+get_relationship(key) / set_relationship(key, value)
+
+# 效果应用（支持 = / + / - / max / min 操作符）
+apply_effect(effect: Dict)
+
+# 条件检查（支持 == / != / > / < / >= / <= 比较）
+check_condition(condition: Dict) → bool
+
+# 观察者模式
+add_change_listener(listener: Callable)
+
+# 序列化
+to_dict() → Dict
 ```
 
-#### 改造 3：Storylet tags 支持场景/地点过滤（低成本）
-```python
-# 在 tags 中加入 location 维度
-tags=["living_room", "tension", "money"]
-# StorySelector 先过滤 location，再评 Salience
-# 同一套引擎即可处理多地点场景
-```
+**compute_beat_delta()：** 根据当前 Storylet 的 effect_trends 和玩家行为上下文动态计算即时状态增量，支持玩家缓解行为触发逆趋势调整，增强叙事动态响应能力。
 
-#### 改造 4：WorldState 增加叙事占位符记录字段（极低成本，来自 StoryVerse）
-```python
-class WorldState:
-    def __init__(self):
-        self.flags = {}
-        self.qualities = {}
-        self.relationships = {}
-        self.narrative_placeholders = {}  # 新增：跨Storylet叙事一致性
+### 6.2 StateManager — 事务性状态管理器
 
-    def set_placeholder(self, key: str, value: str):
-        """记录叙事关键内容，如 'first_outburst_character' = '父亲'"""
-        self.narrative_placeholders[key] = value
-```
+**文件：** `prototype/facade_remake/core/state_manager.py`
 
-### 9.3 论文写作中的定位表述建议
+在 WorldState 基础上增加：
+- **事务支持：** 原子性状态更新与回滚能力
+- **变更通知：** `_change_listeners` 集合自动触发所有已注册的监听器
+- **历史记录：** `_snapshots` 列表支持状态回溯与调试
 
-> "本系统实现了一个**通用叙事引擎内核**（Generic Narrative Engine），以家庭互动场景作为验证案例。引擎的核心组件（WorldState、Storylet、Landmark、StorySelector）在设计上不依赖特定场景，具备扩展至多角色、多地点叙事场景的潜力，与 StoryVerse（Wang et al., 2024）等开放世界叙事系统在架构层面同构，差异主要在场景配置而非引擎核心。"
+### 6.3 DIContainer — 依赖注入容器
 
-### 9.4 与 StoryVerse 的架构对应关系
+**文件：** `prototype/facade_remake/core/di_container.py`
 
-| StoryVerse 组件 | FacadeRemake 对应 | 差异说明 |
-|----------------|-----------------|---------|
-| Abstract Acts | Landmark（主线锚点） | Landmark 当前不含占位符机制，可扩展 |
-| Narrative Plan（具体行动序列） | Storylet | FacadeRemake 粒度更细（对话场景级） |
-| Act Director | StorySelector | 均负责"当前该执行什么叙事单元" |
-| Character Simulator | CharacterAgent | 均为 LLM 驱动，接口类似 |
-| Game Environment | WorldState | 均为状态容器，驱动整体流程 |
-| Story Domain | scenarios/facade_remake/ | 场景配置数据层 |
+统一管理所有模块实例，采用**惰性初始化**模式（Property + lazy init），确保依赖关系的正确解析顺序，消除模块间的直接耦合。提供 `init_world_state()` 与 `load_data()` 方法从 ScenarioConfig 完成初始化。
 
 ---
 
-*文档版本：v0.1 → v0.3 | 最新更新：2026-04-07 | 状态：持续维护中*
+## 七、WebSocket 通信层（ws_server.py）
+
+### 7.1 服务架构
+
+```
+前端 (React)  ←── WebSocket ──→  FastAPI (ws_server.py)
+                                         │
+                                         └── GameSession（每连接一个实例）
+                                             ├── WorldState
+                                             ├── StoryletManager
+                                             ├── LandmarkManager
+                                             ├── StorySelector
+                                             ├── DirectorAgent
+                                             ├── InputParser
+                                             ├── SemanticConditionStore
+                                             ├── CharacterAgent × 2（trip/grace）
+                                             └── LLMClient
+```
+
+**端点：**
+- `/ws/play`：主游戏 WebSocket 通信通道
+- `/api/health`：REST 健康检查端点
+
+### 7.2 通信协议（前后端 JSON 消息）
+
+#### 前端 → 后端
+
+| 消息类型          | 触发时机             | 核心数据                                          |
+| ----------------- | -------------------- | ------------------------------------------------- |
+| `init_scene`      | 进入 Play 模式时     | `{landmarks, storylets, characters, world_state_definition}` |
+| `player_input`    | 玩家发送消息         | `{text: "玩家输入文本"}`                          |
+| `debug_worldstate`| Debug 面板修改状态   | `{qualities, flags, relationships}`               |
+| `reset`           | 点击重置按钮         | —                                                 |
+
+#### 后端 → 前端
+
+| 消息类型           | 说明                 | 核心数据                                           |
+| ------------------ | -------------------- | -------------------------------------------------- |
+| `chat`(role=player)| 玩家消息回显         | `{speech}`                                         |
+| `chat`(role=trip/grace) | 角色响应        | `{speaker_name, speech, action, thought}`          |
+| `chat`(role=narrator) | 旁白             | `{speech}`                                         |
+| `chat`(role=system) | 系统提示           | `{speech}`                                         |
+| `state_update`     | 完整状态快照         | `{world_state, current_landmark_id, current_landmark, current_storylet_id, current_storylet, turn, game_ended}` |
+| `llm_debug`        | LLM 调试信息         | `{event, data: {model, messages, content, ...}}`   |
+| `error`            | 错误信息             | `{message}`                                        |
+
+### 7.3 会话生命周期
+
+```
+[WebSocket 连接建立]
+     │
+     ├─ init_scene → 创建 GameSession + 初始化所有子模块
+     │   ├── 初始化 WorldState（qualities/flags/relationships）
+     │   ├── 加载 Landmarks + Storylets
+     │   ├── 初始化 CharacterAgent（角色配置由前端下发）
+     │   ├── 初始化 DirectorAgent
+     │   ├── 选择初始 Storylet + 应用 Effects
+     │   └── 推送 state_update + 开场消息
+     │
+     ├─ player_input → process_turn()
+     │   ├── InputParser.analyze()（合法性检查 + 语义匹配）
+     │   ├── StorySelector 选/切换 Storylet
+     │   ├── DirectorAgent.generate_beat_plan()
+     │   ├── CharacterAgent × N 生成响应（线程池异步执行）
+     │   ├── LandmarkManager.check_progression()
+     │   └── 推送所有消息 + state_update
+     │
+     ├─ debug_worldstate → apply_debug_worldstate()
+     ├─ reset → 清空 GameSession 状态
+     └─ [WebSocket 断开]
+```
+
+---
+
+## 八、前端交互层（Frontend Layer）
+
+### 8.1 技术栈
+
+| 模块          | 技术选型                              |
+| ------------- | ------------------------------------- |
+| UI 框架       | React 18 + TypeScript                 |
+| 构建工具      | Vite 5.4                              |
+| 样式          | Tailwind CSS v4                       |
+| 状态管理      | Zustand + Immer                       |
+| DAG 编辑器    | React Flow                            |
+| 实时通信      | WebSocket（原生浏览器 API）            |
+
+### 8.2 两大工作模式
+
+#### Design 模式（叙事内容可视化编辑）
+
+```
+App
+├── Toolbar（工具栏：保存/加载/模式切换）
+├── LandmarkCanvas（React Flow DAG 画布）
+│   ├── LandmarkNode（自定义节点：颜色区分阶段/结局）
+│   └── TransitionEdge（自定义边：动画区分转场类型）
+└── Inspector（右侧属性面板）
+    ├── StoryletPool（场景池管理）
+    ├── CharactersPanel（角色配置：档案/秘密/独白/行为）
+    └── WorldStatePanel（世界状态变量定义）
+```
+
+**状态管理：** `useProjectStore`（Zustand）管理项目级数据（Landmark/Storylet/Character），支持撤销/重做（最多 50 步历史）。
+
+#### Play 模式（沉浸式游戏体验）
+
+```
+PlayMode
+├── ChatLog（对话历史流：自动滚动/新消息高亮/thought 折叠）
+├── InputBar（玩家输入框：空输入识别为沉默）
+└── DebugPanel（调试面板）
+    ├── 世界状态实时查看与修改
+    ├── 当前 Landmark/Storylet 信息
+    └── LLM 调试日志（请求/响应详情，最多 200 条）
+```
+
+**状态管理：** `usePlayStore`（Zustand + Immer）管理游戏会话数据，支持：
+- 回退（Rollback）：快照栈（最多 30 步），恢复到上一回合状态
+- 乐观更新：玩家发送消息后立即本地显示，无需等待后端响应
+- WebSocket 单例：连接断开后自动 3 秒重连
+
+### 8.3 前后端数据同步
+
+`useProjectStore` 中的编辑器数据（Landmarks/Storylets/Characters/WorldStateDefinition）通过 `sendInitScene()` 序列化后经 WebSocket 下发至后端，后端 GameSession 据此完成初始化。Play 模式中的实时状态（WorldState / LandmarkId / StoryletId）由后端通过 `state_update` 消息主动推送，前端被动同步。
+
+---
+
+## 九、架构层级总览（四层叙事控制粒度）
+
+```
+┌────────────────────────────────────────────────────────┐
+│  Layer 1: Landmark 层（剧情阶段级）                     │
+│  · 4个阶段：lm_1→lm_2→lm_3a/3b→lm_4→lm_5a/5b（含结局）│
+│  · 控制允许哪些 Storylet 标签进入候选池                  │
+│  · 控制禁止 LLM 提及的叙事信息（forbidden_reveals）     │
+│  · 转场条件：世界状态 OR 回合限制 OR 输入关键词 OR 语义  │
+├────────────────────────────────────────────────────────┤
+│  Layer 2: Storylet 层（场景片段级，3-8轮对话）           │
+│  · 多个专用 Storylet + 1个兜底                          │
+│  · 三层过滤：标签→条件→Salience评分                     │
+│  · llm_trigger 语义条件由 InputParser 统一批量判断      │
+│  · allowed_behaviors 约束角色可执行的行为范围            │
+├────────────────────────────────────────────────────────┤
+│  Layer 3: CharacterAgent 层（台词/动作级）              │
+│  · BeatPlan 驱动：Director 规划，Character 执行         │
+│  · 三步生成：内心独白(0.75) → 行为选择(0.1) → 台词(0.6)│
+│  · IBSEN 式质量防护：NG重试 + 重复检测 + JSON校验       │
+│  · 心口不一（thought ≠ speech）                        │
+├────────────────────────────────────────────────────────┤
+│  Layer 4: InputParser 层（语义理解级）                   │
+│  · 合法性检查：规则过滤 + LLM语义判断（meta/暴力/语境）  │
+│  · 语义条件匹配：Storylet llm_trigger + Landmark llm_semantic│
+│  · analyze() 单次 LLM 调用完成合法性 + 条件匹配两项任务  │
+│  · SemanticConditionStore 预留向量检索扩展接口           │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 十、技术栈总览
+
+| 模块           | 技术方案                          | 文件位置                                |
+| -------------- | --------------------------------- | --------------------------------------- |
+| 世界状态容器   | Python dataclass + 观察者模式     | `core/world_state.py`                   |
+| 状态管理器     | 事务性 StateManager               | `core/state_manager.py`                 |
+| Landmark 管理  | DAG 结构 + LandmarkManager        | `core/landmark.py`                      |
+| Storylet 管理  | 数据结构 + StoryletManager        | `core/storylet.py`                      |
+| 场景选择器     | 三层过滤 + Salience 评分          | `agents/story_selector.py`              |
+| 输入解析       | 规则层 + LLM语义判断 + 条件索引   | `agents/input_parser.py`                |
+| 叙事导演       | GoalTracker + InstructionGenerator| `agents/director.py`                    |
+| 角色扮演       | 三步生成 + IBSEN防护机制          | `agents/character_agent.py`             |
+| LLM 调用       | OpenAI API 兼容格式               | `agents/llm_client.py`                  |
+| 游戏引擎       | DIContainer + 业务逻辑封装        | `engine/game_engine.py`                 |
+| 异步事件循环   | asyncio 三轨并发                  | `engine/event_loop.py`                  |
+| WebSocket 服务 | FastAPI + uvicorn                 | `prototype/ws_server.py`                |
+| 前端框架       | React 18 + TypeScript + Vite 5.4  | `frontend/src/`                         |
+| 状态管理（前端）| Zustand + Immer                  | `frontend/src/store/`                   |
+| DAG 编辑器     | React Flow                        | `frontend/src/components/canvas/`       |
+
+---
+
+## 十一、与相关工作的架构对应
+
+| 本研究              | DRAMA LLAMA     | IBSEN           | StoryVerse          | Dramamancer  |
+| ------------------- | --------------- | --------------- | ------------------- | ------------ |
+| InputParser         | 自然语言前置条件 | —               | —                   | —            |
+| DirectorAgent       | —               | Director        | Act Director        | —            |
+| CharacterAgent      | Speaker 自决    | Actor           | Character Simulator | —            |
+| Landmark            | —               | —               | Abstract Acts       | —            |
+| Storylet            | Storylet        | —               | Narrative Plan      | Storylet     |
+| 三步生成            | —               | Monologue       | —                   | —            |
+| Salience 选择       | Salience        | —               | —                   | Time fallback|
+| BeatPlan            | —               | Beat Dependency | Narrative Plan      | Beat         |
+| NG words 重试       | —               | NG retry        | —                   | —            |
+
+---
+
+*文档版本：v2.0 | 最后更新：2026-04-29 | 状态：与实际代码库同步（engine/ + ws_server.py）*

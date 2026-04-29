@@ -91,7 +91,6 @@ export interface Storylet {
   // Salience
   salience: Salience
   // 演出
-  choices_hint: string[]
   on_interrupt: 'pause' | 'abort' | 'continue'
   // 结束触发
   completion_trigger?: CompletionTrigger
