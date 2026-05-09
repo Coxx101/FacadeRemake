@@ -1,7 +1,8 @@
 """
 依赖注入容器 - 集中管理所有模块实例，消除循环依赖
+支持动态角色管理，不再硬编码角色名称
 """
-from typing import Optional
+from typing import Optional, Dict, Any, List
 import sys
 import os
 
@@ -24,8 +25,8 @@ class DIContainer:
         self._input_parser = None
         self._story_selector = None
         self._director = None
-        self._trip_agent = None
-        self._grace_agent = None
+        # 动态角色管理器 - 支持任意数量的自定义角色
+        self._character_agents: Dict[str, Any] = {}
         self._storylet_manager = None
         self._landmark_manager = None
         self._state_manager = None
@@ -101,20 +102,6 @@ class DIContainer:
         return self._director
 
     @property
-    def trip_agent(self):
-        if self._trip_agent is None:
-            from agents.character_agent import CharacterAgent
-            self._trip_agent = self._create_character_agent("trip")
-        return self._trip_agent
-
-    @property
-    def grace_agent(self):
-        if self._grace_agent is None:
-            from agents.character_agent import CharacterAgent
-            self._grace_agent = self._create_character_agent("grace")
-        return self._grace_agent
-
-    @property
     def state_manager(self):
         if self._state_manager is None:
             from core.state_manager import StateManager
@@ -129,7 +116,40 @@ class DIContainer:
             self._logger = GameLogger("FacadeRemake", level=level)
         return self._logger
 
-    def _create_character_agent(self, name: str):
+    # ─── 动态角色管理接口 ──────────────────────────────────────────────────────
+
+    def get_character_agent(self, character_id: str):
+        """获取指定角色的 Agent"""
+        if character_id not in self._character_agents:
+            # 如果场景配置中存在该角色，尝试从配置创建
+            if self._scenario_config:
+                self._create_character_agent_from_config(character_id)
+            else:
+                raise ValueError(f"角色 '{character_id}' 未注册")
+        return self._character_agents.get(character_id)
+
+    def register_character_agent(self, character_id: str, agent):
+        """注册角色 Agent"""
+        self._character_agents[character_id] = agent
+
+    def unregister_character_agent(self, character_id: str):
+        """注销角色 Agent"""
+        if character_id in self._character_agents:
+            del self._character_agents[character_id]
+
+    def list_characters(self) -> List[str]:
+        """获取所有已注册角色的 ID 列表"""
+        return list(self._character_agents.keys())
+
+    def has_character(self, character_id: str) -> bool:
+        """检查角色是否已注册"""
+        return character_id in self._character_agents
+
+    def clear_characters(self):
+        """清除所有角色 Agent"""
+        self._character_agents.clear()
+
+    def _create_character_agent_from_config(self, name: str):
         """从 scenario_config 创建角色 Agent"""
         from agents.character_agent import CharacterAgent
         from dataclasses import asdict
@@ -151,6 +171,7 @@ class DIContainer:
         
         agent = CharacterAgent(self.llm_client, name, character_config, self._scenario_config)
         agent.set_debug(self.debug_mode)
+        self._character_agents[name] = agent
         return agent
 
     def init_world_state(self):
@@ -173,10 +194,8 @@ class DIContainer:
     def load_data(self):
         """从 scenario_config 加载 Storylets 和 Landmarks"""
         if not self._scenario_config:
-            raise ValueError(
-                "scenario_config 未提供，无法加载数据。\n"
-                "请在创建 DIContainer 时提供 scenario_config 参数。"
-            )
+            # 如果没有 scenario_config，跳过加载（数据将通过 init_from_scene_data 传入）
+            return
         
         # 从 scenario_config 获取 storylets（如果有）
         storylets = getattr(self._scenario_config, 'storylets', None)
@@ -191,8 +210,57 @@ class DIContainer:
         """配置场景，并清除依赖 scenario_config 的缓存单例"""
         self._scenario_config = scenario_config
         # 清除依赖 scenario_config 的已缓存单例，让它们下次访问时用新配置重建
-        self._trip_agent = None
-        self._grace_agent = None
+        self._character_agents.clear()
+        self._director = None
+        self._input_parser = None
+        self._story_selector = None
+
+    def init_from_scene_data(self, scene_data):
+        """从前端发送的场景数据初始化"""
+        # 初始化 WorldState
+        from core.world_state import WorldState
+        self._world_state = WorldState()
+        ws = self._world_state
+        
+        # 从 world_state_definition 初始化
+        wsd = scene_data.get('world_state_definition', {})
+        for quality in wsd.get('qualities', []):
+            ws.set_quality(quality['key'], quality.get('initial', 0))
+        for flag in wsd.get('flags', []):
+            ws.set_flag(flag['key'], flag.get('initial', False))
+        for rel in wsd.get('relationships', []):
+            ws.set_relationship(rel['key'], rel.get('initial', 0))
+        
+        # 加载 Storylets
+        self.storylet_manager.load_from_dicts(scene_data.get('storylets', []))
+        
+        # 加载 Landmarks
+        self.landmark_manager.load_from_dicts(scene_data.get('landmarks', []))
+        
+        # 保存共享上下文
+        self._shared_context = scene_data.get('shared_context', {})
+        
+        # 保存库数据
+        self._action_library = scene_data.get('action_library', [])
+        self._expression_library = scene_data.get('expression_library', [])
+        self._prop_library = scene_data.get('prop_library', [])
+        self._location_library = scene_data.get('location_library', [])
+        
+        # 动态创建角色 Agent（支持任意数量的自定义角色）
+        from agents.character_agent import CharacterAgent
+        
+        # 先清除旧角色
+        self.clear_characters()
+        
+        characters = scene_data.get('characters', [])
+        for char in characters:
+            char_id = char.get('id')
+            if char_id:
+                agent = CharacterAgent(self.llm_client, char_id, char, None)
+                agent.set_debug(self.debug_mode)
+                self.register_character_agent(char_id, agent)
+        
+        # 更新 director 和 input_parser 使用新数据
         self._director = None
         self._input_parser = None
         self._story_selector = None

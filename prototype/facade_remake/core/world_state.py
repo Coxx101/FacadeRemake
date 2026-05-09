@@ -37,6 +37,18 @@ class WorldState:
         """设置关系数值"""
         self.relationships[key] = value
     
+    def get_all_qualities(self) -> Dict[str, float]:
+        """获取所有数值型变量"""
+        return self.qualities.copy()
+    
+    def get_all_flags(self) -> Dict[str, Any]:
+        """获取所有标记型变量"""
+        return self.flags.copy()
+    
+    def get_all_relationships(self) -> Dict[str, float]:
+        """获取所有关系数值"""
+        return self.relationships.copy()
+    
     def apply_effect(self, effect: Dict[str, Any]):
         """应用一个效果到世界状态"""
         key = effect.get("key")

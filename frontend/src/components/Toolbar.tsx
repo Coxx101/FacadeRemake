@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react'
 import {
   Plus, Trash2, Undo2, Redo2, FolderOpen, Save, Gamepad2,
-  LayoutDashboard, Users, Wrench, AlertTriangle, Globe,
+  LayoutDashboard, Users, Wrench, AlertTriangle, Globe, Package,
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { useProjectStore } from '../store/useProjectStore'
@@ -52,6 +52,10 @@ export default function Toolbar() {
     const chars = useStore.getState().characters
     const wsd = useStore.getState().worldStateDefinition
     const currentProjectId = useStore.getState().currentProjectId
+    const actionLibrary = useStore.getState().actionLibrary
+    const expressionLibrary = useStore.getState().expressionLibrary
+    const propLibrary = useStore.getState().propLibrary
+    const locationLibrary = useStore.getState().locationLibrary
     const data = {
       landmarks: landmarks.map(({ position: _pos, ...rest }: Landmark) => rest),
       landmarks_layout: landmarks.map((l: Landmark) => ({ id: l.id, position: l.position })),
@@ -59,6 +63,10 @@ export default function Toolbar() {
       characters: chars,
       shared_context: sharedContext,
       world_state_definition: wsd,
+      action_library: actionLibrary,
+      expression_library: expressionLibrary,
+      prop_library: propLibrary,
+      location_library: locationLibrary,
     }
     // 下载 JSON 文件
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -75,6 +83,10 @@ export default function Toolbar() {
         characters: chars,
         sharedContext,
         worldStateDefinition: wsd,
+        actionLibrary,
+        expressionLibrary,
+        propLibrary,
+        locationLibrary,
       })
     }
   }
@@ -133,6 +145,10 @@ export default function Toolbar() {
   const setRightPanel = useStore((s: StoreState) => s.setRightPanel)
   const characters = useStore((s: StoreState) => s.characters)
   const wsd = useStore((s: StoreState) => s.worldStateDefinition)
+  const actionLibrary = useStore((s: StoreState) => s.actionLibrary)
+  const expressionLibrary = useStore((s: StoreState) => s.expressionLibrary)
+  const propLibrary = useStore((s: StoreState) => s.propLibrary)
+  const locationLibrary = useStore((s: StoreState) => s.locationLibrary)
 
   // ── 撤销 / 重做 ──
   const _undoCount = useStore((s: StoreState) => s._undoCount)
@@ -231,6 +247,12 @@ export default function Toolbar() {
               fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
               display: 'flex', alignItems: 'center', gap: '5px',
             }}><Globe size={13} /> 变量</button>
+            <button onClick={() => setRightPanel('library')} style={{
+              padding: '5px 12px', background: rightPanel === 'library' ? '#27ae60' : 'none',
+              border: 'none', color: rightPanel === 'library' ? '#fff' : '#8891b0',
+              fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+              display: 'flex', alignItems: 'center', gap: '5px',
+            }}><Package size={13} /> 资源库</button>
           </div>
           <div style={{ width: '1px', height: '24px', background: '#2e3250', margin: '0 4px' }} />
           <ToolButton icon={<FolderOpen size={14} />} label="导入 JSON" onClick={handleLoad} color="#8891b0" />
@@ -242,7 +264,7 @@ export default function Toolbar() {
 
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
         <span style={{ color: '#4a5070', fontSize: '11px' }}>
-          {landmarks.length} 节点 · {storylets.length} storylets · {characters.length} 角色 · {wsd.qualities.length + wsd.flags.length + wsd.relationships.length} 变量
+          {landmarks.length} 节点 · {storylets.length} storylets · {characters.length} 角色 · {wsd.qualities.length + wsd.flags.length + wsd.relationships.length} 变量 · {actionLibrary.length + expressionLibrary.length + propLibrary.length + locationLibrary.length} 资源
         </span>
         {isDirty && (
           <span style={{ background: 'rgba(46,204,113,0.15)', color: '#2ecc71', fontSize: '10px', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>

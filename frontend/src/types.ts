@@ -107,14 +107,6 @@ export interface MonologueTemplate {
   emotion_tags: string[]
 }
 
-export interface BehaviorMeta {
-  id: string
-  label: string           // 简短中文标签
-  description: string     // 对 LLM 的行为说明
-  tone_hint: string       // 默认情绪基调
-  salience_boost: number  // salience 加成
-}
-
 export interface CharacterProfile {
   id: string            // 'trip', 'grace', 'player' …
   name: string          // 显示名
@@ -124,19 +116,17 @@ export interface CharacterProfile {
   secret_knowledge: string[]  // 秘密知识条目
   ng_words: string[]    // 禁用词
   monologues: MonologueTemplate[]  // 内心独白模板
-  behaviors: string[]   // 角色可用行为 ID 列表（如 ["deflect", "go_quiet", ...]）
-  behavior_meta: Record<string, BehaviorMeta>  // 行为元数据字典 { id: { label, description, ... } }
 }
 
 export interface SharedContext {
   marriage_secret: {
-    father_borrowed_money?: boolean
-    father_lost_money?: boolean
-    lender?: string
-    mother_found_out?: boolean
-    father_doesnt_know_mother_knows?: boolean
-    amount?: string
-    timeline?: string
+    grace_affair_with_vince?: boolean
+    vince_is_college_friend?: boolean
+    grace_slept_with_vince_before_proposal?: boolean
+    trip_also_had_affair?: boolean
+    grace_doesnt_know_trip_affair?: boolean
+    trip_cant_stand_grace_being_artist?: boolean
+    class_difference?: boolean
   }
   key_events: Record<string, string>
 }
@@ -176,6 +166,32 @@ export interface WorldStateDefinition {
   relationships: RelationshipDef[]
 }
 
+// ─── 库定义（Design 模式可编辑）───────────────────────────────────────────────
+
+export interface ActionEntry {
+  id: string
+  label: string
+  description: string
+  parameters: string[]
+}
+
+export interface ExpressionEntry {
+  id: string
+  label: string
+  animation_name: string
+}
+
+export interface PropEntry {
+  id: string
+  label: string
+}
+
+export interface LocationEntry {
+  id: string
+  label: string
+  adjacent?: string[]
+}
+
 // ─── 应用状态类型 ─────────────────────────────────────────────────────────────
 
 export type AppMode = 'home' | 'design' | 'play'
@@ -189,12 +205,16 @@ export interface StoryProjectMeta {
   description: string
   createdAt: string   // ISO 8601
   updatedAt: string   // ISO 8601
-  /** 编辑器数据快照（landmarks + storylets + characters + sharedContext + worldStateDefinition） */
+  /** 编辑器数据快照 */
   snapshot: {
     landmarks: Landmark[]
     storylets: Storylet[]
     characters: CharacterProfile[]
     sharedContext: SharedContext
     worldStateDefinition: WorldStateDefinition
+    actionLibrary: ActionEntry[]
+    expressionLibrary: ExpressionEntry[]
+    propLibrary: PropEntry[]
+    locationLibrary: LocationEntry[]
   }
 }

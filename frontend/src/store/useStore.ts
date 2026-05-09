@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import type { Landmark, Storylet, CharacterProfile, SharedContext, AppMode, WorldStateDefinition } from '../types'
+import type { Landmark, Storylet, CharacterProfile, SharedContext, AppMode, WorldStateDefinition, ActionEntry, ExpressionEntry, PropEntry, LocationEntry } from '../types'
 import { cascadeWorldStateChange } from './cascadeWorldState'
 
 // ── 撤销/重做快照类型 ──
@@ -10,6 +10,10 @@ interface HistorySnapshot {
   characters: CharacterProfile[]
   sharedContext: SharedContext
   worldStateDefinition: WorldStateDefinition
+  actionLibrary: ActionEntry[]
+  expressionLibrary: ExpressionEntry[]
+  propLibrary: PropEntry[]
+  locationLibrary: LocationEntry[]
 }
 
 // ── 撤销/重做状态（独立管理，不经过 immer） ──
@@ -33,6 +37,10 @@ function pushUndo(get: () => any) {
     characters: JSON.parse(JSON.stringify(s.characters)),
     sharedContext: JSON.parse(JSON.stringify(s.sharedContext)),
     worldStateDefinition: JSON.parse(JSON.stringify(s.worldStateDefinition)),
+    actionLibrary: JSON.parse(JSON.stringify(s.actionLibrary)),
+    expressionLibrary: JSON.parse(JSON.stringify(s.expressionLibrary)),
+    propLibrary: JSON.parse(JSON.stringify(s.propLibrary)),
+    locationLibrary: JSON.parse(JSON.stringify(s.locationLibrary)),
   })
   if (undoStack.length > UNDO_LIMIT) undoStack.shift()
   redoStack.length = 0
@@ -48,6 +56,10 @@ function performUndo(get: () => any) {
     characters: JSON.parse(JSON.stringify(s.characters)),
     sharedContext: JSON.parse(JSON.stringify(s.sharedContext)),
     worldStateDefinition: JSON.parse(JSON.stringify(s.worldStateDefinition)),
+    actionLibrary: JSON.parse(JSON.stringify(s.actionLibrary)),
+    expressionLibrary: JSON.parse(JSON.stringify(s.expressionLibrary)),
+    propLibrary: JSON.parse(JSON.stringify(s.propLibrary)),
+    locationLibrary: JSON.parse(JSON.stringify(s.locationLibrary)),
   })
   const snapshot = undoStack.pop()!
   useStore.setState({
@@ -56,6 +68,10 @@ function performUndo(get: () => any) {
     characters: snapshot.characters,
     sharedContext: snapshot.sharedContext,
     worldStateDefinition: snapshot.worldStateDefinition,
+    actionLibrary: snapshot.actionLibrary,
+    expressionLibrary: snapshot.expressionLibrary,
+    propLibrary: snapshot.propLibrary,
+    locationLibrary: snapshot.locationLibrary,
     _undoCount: undoStack.length,
     _redoCount: redoStack.length,
   })
@@ -70,6 +86,10 @@ function performRedo(get: () => any) {
     characters: JSON.parse(JSON.stringify(s.characters)),
     sharedContext: JSON.parse(JSON.stringify(s.sharedContext)),
     worldStateDefinition: JSON.parse(JSON.stringify(s.worldStateDefinition)),
+    actionLibrary: JSON.parse(JSON.stringify(s.actionLibrary)),
+    expressionLibrary: JSON.parse(JSON.stringify(s.expressionLibrary)),
+    propLibrary: JSON.parse(JSON.stringify(s.propLibrary)),
+    locationLibrary: JSON.parse(JSON.stringify(s.locationLibrary)),
   })
   const snapshot = redoStack.pop()!
   useStore.setState({
@@ -78,6 +98,10 @@ function performRedo(get: () => any) {
     characters: snapshot.characters,
     sharedContext: snapshot.sharedContext,
     worldStateDefinition: snapshot.worldStateDefinition,
+    actionLibrary: snapshot.actionLibrary,
+    expressionLibrary: snapshot.expressionLibrary,
+    propLibrary: snapshot.propLibrary,
+    locationLibrary: snapshot.locationLibrary,
     _undoCount: undoStack.length,
     _redoCount: redoStack.length,
   })
@@ -103,6 +127,10 @@ export interface StoreState extends UndoRedoSlice {
   characters: CharacterProfile[]
   sharedContext: SharedContext
   worldStateDefinition: WorldStateDefinition
+  actionLibrary: ActionEntry[]
+  expressionLibrary: ExpressionEntry[]
+  propLibrary: PropEntry[]
+  locationLibrary: LocationEntry[]
   isDirty: boolean
 
   // ── 选中状态 ──
@@ -111,7 +139,7 @@ export interface StoreState extends UndoRedoSlice {
   selectedCharacterId: string | null
   selectedLandmarkIds: string[]
   inspectorTab: 'properties' | 'transitions'
-  rightPanel: 'inspector' | 'characters' | 'worldstate'
+  rightPanel: 'inspector' | 'characters' | 'worldstate' | 'library'
   isStoryletModalOpen: boolean
 
   // ── Landmark 操作 ──
@@ -143,14 +171,28 @@ export interface StoreState extends UndoRedoSlice {
   updateWorldStateDefinition: (patch: Partial<WorldStateDefinition>) => void
   loadWorldStateDefinition: (wsd: WorldStateDefinition) => void
 
+  // ── 库操作 ──
+  addAction: (action: ActionEntry) => void
+  updateAction: (id: string, patch: Partial<ActionEntry>) => void
+  deleteAction: (id: string) => void
+  addExpression: (expression: ExpressionEntry) => void
+  updateExpression: (id: string, patch: Partial<ExpressionEntry>) => void
+  deleteExpression: (id: string) => void
+  addProp: (prop: PropEntry) => void
+  updateProp: (id: string, patch: Partial<PropEntry>) => void
+  deleteProp: (id: string) => void
+  addLocation: (location: LocationEntry) => void
+  updateLocation: (id: string, patch: Partial<LocationEntry>) => void
+  deleteLocation: (id: string) => void
+
   // ── Inspector ──
   inspectorWidth: number
   setInspectorTab: (tab: 'properties' | 'transitions') => void
   setInspectorWidth: (width: number) => void
-  setRightPanel: (panel: 'inspector' | 'characters' | 'worldstate') => void
+  setRightPanel: (panel: 'inspector' | 'characters' | 'worldstate' | 'library') => void
 
   // ── 持久化 ──
-  loadFromJSON: (landmarks: Landmark[], storylets: Storylet[], characters?: CharacterProfile[], sharedContext?: SharedContext, worldStateDefinition?: WorldStateDefinition) => void
+  loadFromJSON: (landmarks: Landmark[], storylets: Storylet[], characters?: CharacterProfile[], sharedContext?: SharedContext, worldStateDefinition?: WorldStateDefinition, actionLibrary?: ActionEntry[], expressionLibrary?: ExpressionEntry[], propLibrary?: PropEntry[], locationLibrary?: LocationEntry[]) => void
   markClean: () => void
 }
 
@@ -166,6 +208,10 @@ export const useStore = create<StoreState>()(
     characters: [] as CharacterProfile[],
     sharedContext: { marriage_secret: {}, key_events: {} } as SharedContext,
     worldStateDefinition: { qualities: [], flags: [], relationships: [] } as WorldStateDefinition,
+    actionLibrary: [] as ActionEntry[],
+    expressionLibrary: [] as ExpressionEntry[],
+    propLibrary: [] as PropEntry[],
+    locationLibrary: [] as LocationEntry[],
     isDirty: false,
 
     selectedLandmarkId: null,
@@ -263,8 +309,8 @@ export const useStore = create<StoreState>()(
         source.transitions.push({
           target_id: targetId,
           conditions: [],
-          turn_limit: null,
-          storylet_count: null,
+          turn_limit: undefined,
+          storylet_count: undefined,
           is_fallback: false,
           label: '',
         })
@@ -375,8 +421,117 @@ export const useStore = create<StoreState>()(
     setInspectorWidth: (width) => set((s) => { s.inspectorWidth = width }),
     setRightPanel: (panel) => set((s) => { s.rightPanel = panel }),
 
+    // ── 库操作 ──
+    addAction: (action) => {
+      pushUndo(get)
+      set((s) => {
+        s.actionLibrary.push(action)
+        s.isDirty = true
+      })
+    },
+
+    updateAction: (id, patch) => {
+      pushUndo(get)
+      set((s) => {
+        const idx = s.actionLibrary.findIndex((a) => a.id === id)
+        if (idx !== -1) {
+          Object.assign(s.actionLibrary[idx], patch)
+          s.isDirty = true
+        }
+      })
+    },
+
+    deleteAction: (id) => {
+      pushUndo(get)
+      set((s) => {
+        s.actionLibrary = s.actionLibrary.filter((a) => a.id !== id)
+        s.isDirty = true
+      })
+    },
+
+    addExpression: (expression) => {
+      pushUndo(get)
+      set((s) => {
+        s.expressionLibrary.push(expression)
+        s.isDirty = true
+      })
+    },
+
+    updateExpression: (id, patch) => {
+      pushUndo(get)
+      set((s) => {
+        const idx = s.expressionLibrary.findIndex((e) => e.id === id)
+        if (idx !== -1) {
+          Object.assign(s.expressionLibrary[idx], patch)
+          s.isDirty = true
+        }
+      })
+    },
+
+    deleteExpression: (id) => {
+      pushUndo(get)
+      set((s) => {
+        s.expressionLibrary = s.expressionLibrary.filter((e) => e.id !== id)
+        s.isDirty = true
+      })
+    },
+
+    addProp: (prop) => {
+      pushUndo(get)
+      set((s) => {
+        s.propLibrary.push(prop)
+        s.isDirty = true
+      })
+    },
+
+    updateProp: (id, patch) => {
+      pushUndo(get)
+      set((s) => {
+        const idx = s.propLibrary.findIndex((p) => p.id === id)
+        if (idx !== -1) {
+          Object.assign(s.propLibrary[idx], patch)
+          s.isDirty = true
+        }
+      })
+    },
+
+    deleteProp: (id) => {
+      pushUndo(get)
+      set((s) => {
+        s.propLibrary = s.propLibrary.filter((p) => p.id !== id)
+        s.isDirty = true
+      })
+    },
+
+    addLocation: (location) => {
+      pushUndo(get)
+      set((s) => {
+        s.locationLibrary.push(location)
+        s.isDirty = true
+      })
+    },
+
+    updateLocation: (id, patch) => {
+      pushUndo(get)
+      set((s) => {
+        const idx = s.locationLibrary.findIndex((l) => l.id === id)
+        if (idx !== -1) {
+          Object.assign(s.locationLibrary[idx], patch)
+          s.isDirty = true
+        }
+      })
+    },
+
+    deleteLocation: (id) => {
+      pushUndo(get)
+      set((s) => {
+        s.locationLibrary = s.locationLibrary.filter((l) => l.id !== id)
+        s.isDirty = true
+      })
+    },
+
     // ── 持久化 ──
-    loadFromJSON: (landmarks, storylets, characters, sharedContext, worldStateDefinition) => {
+    loadFromJSON: (landmarks, storylets, characters, sharedContext, worldStateDefinition, actionLibrary, expressionLibrary, propLibrary, locationLibrary) => {
       clearHistory()
       set((s) => {
         s.landmarks = landmarks
@@ -384,6 +539,10 @@ export const useStore = create<StoreState>()(
         if (characters) s.characters = characters
         if (sharedContext) s.sharedContext = sharedContext
         if (worldStateDefinition) s.worldStateDefinition = worldStateDefinition
+        if (actionLibrary) s.actionLibrary = actionLibrary
+        if (expressionLibrary) s.expressionLibrary = expressionLibrary
+        if (propLibrary) s.propLibrary = propLibrary
+        if (locationLibrary) s.locationLibrary = locationLibrary
         s.isDirty = false
         s.selectedLandmarkId = null
         s.selectedLandmarkIds = []

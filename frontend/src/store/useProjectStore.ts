@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { StoryProjectMeta, Landmark, Storylet, CharacterProfile, SharedContext, WorldStateDefinition } from '../types'
+import type { StoryProjectMeta, Landmark, Storylet, CharacterProfile, SharedContext, WorldStateDefinition, ActionEntry, ExpressionEntry, PropEntry, LocationEntry } from '../types'
 
 const STORAGE_KEY = 'facadestudio_projects'
 
@@ -37,6 +37,10 @@ export interface ProjectStoreState {
       characters: CharacterProfile[]
       sharedContext: SharedContext
       worldStateDefinition: WorldStateDefinition
+      actionLibrary: ActionEntry[]
+      expressionLibrary: ExpressionEntry[]
+      propLibrary: PropEntry[]
+      locationLibrary: LocationEntry[]
     },
   ) => void
   /** 删除项目 */
@@ -62,6 +66,10 @@ export const useProjectStore = create<ProjectStoreState>()((set, get) => ({
         characters: [] as CharacterProfile[],
         sharedContext: { marriage_secret: {}, key_events: {} } as SharedContext,
         worldStateDefinition: { qualities: [], flags: [], relationships: [] } as WorldStateDefinition,
+        actionLibrary: [] as ActionEntry[],
+        expressionLibrary: [] as ExpressionEntry[],
+        propLibrary: [] as PropEntry[],
+        locationLibrary: [] as LocationEntry[],
       },
     }
     set((s) => {

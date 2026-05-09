@@ -8,6 +8,8 @@ import { useStore } from '../store/useStore'
 import {
   defaultLandmarks, defaultStorylets, defaultCharacters,
   defaultSharedContext, defaultWorldStateDefinition,
+  defaultActionLibrary, defaultExpressionLibrary,
+  defaultPropLibrary, defaultLocationLibrary,
 } from '../data/defaults'
 import type { AppMode } from '../types'
 
@@ -31,6 +33,10 @@ export default function StartScreen({ onEnterProject }: StartScreenProps) {
       characters: defaultCharacters,
       sharedContext: defaultSharedContext,
       worldStateDefinition: defaultWorldStateDefinition,
+      actionLibrary: defaultActionLibrary,
+      expressionLibrary: defaultExpressionLibrary,
+      propLibrary: defaultPropLibrary,
+      locationLibrary: defaultLocationLibrary,
     }
     let changed = false
     for (const p of store.projects) {
@@ -83,6 +89,10 @@ export default function StartScreen({ onEnterProject }: StartScreenProps) {
       snapshot.characters,
       snapshot.sharedContext,
       snapshot.worldStateDefinition,
+      snapshot.actionLibrary,
+      snapshot.expressionLibrary,
+      snapshot.propLibrary,
+      snapshot.locationLibrary,
     )
     useStore.setState({ currentProjectId: projectId })
     onEnterProject('design')
@@ -98,6 +108,10 @@ export default function StartScreen({ onEnterProject }: StartScreenProps) {
       snapshot.characters,
       snapshot.sharedContext,
       snapshot.worldStateDefinition,
+      snapshot.actionLibrary,
+      snapshot.expressionLibrary,
+      snapshot.propLibrary,
+      snapshot.locationLibrary,
     )
     useStore.setState({ currentProjectId: projectId })
     onEnterProject('play')
@@ -137,6 +151,10 @@ export default function StartScreen({ onEnterProject }: StartScreenProps) {
             characters: data.characters ?? project.snapshot.characters,
             sharedContext: data.shared_context ?? project.snapshot.sharedContext,
             worldStateDefinition: data.world_state_definition ?? project.snapshot.worldStateDefinition,
+            actionLibrary: data.action_library ?? project.snapshot.actionLibrary,
+            expressionLibrary: data.expression_library ?? project.snapshot.expressionLibrary,
+            propLibrary: data.prop_library ?? project.snapshot.propLibrary,
+            locationLibrary: data.location_library ?? project.snapshot.locationLibrary,
           })
           // 同时加载到主 store
           useStore.getState().loadFromJSON(
@@ -145,6 +163,10 @@ export default function StartScreen({ onEnterProject }: StartScreenProps) {
             data.characters,
             data.shared_context,
             data.world_state_definition,
+            data.action_library,
+            data.expression_library,
+            data.prop_library,
+            data.location_library,
           )
           useStore.setState({ currentProjectId: project.id })
           onEnterProject('design')

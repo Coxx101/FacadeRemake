@@ -106,12 +106,8 @@ class LLMClient:
                        max_tokens: Optional[int] = None,
                        **extra_kwargs) -> str:
         """调用聊天补全 API"""
-        # 截断后的 messages 用于日志
-        log_messages = []
-        for msg in messages:
-            content = msg.get("content", "")
-            preview = content[:500] + f"... (truncated)" if len(content) > 500 else content
-            log_messages.append({"role": msg.get("role", "?"), "content": preview})
+        # 完整的 messages 用于日志（不截断）
+        log_messages = [{"role": msg.get("role", "?"), "content": msg.get("content", "")} for msg in messages]
 
         self._emit_debug("llm_request", {
             "_print": f"\n{'='*60}\n[LLM] model={self.model}, temp={temperature}, max_tokens={max_tokens}\n"
@@ -131,15 +127,23 @@ class LLMClient:
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
         kwargs.update(extra_kwargs)
-        response = self.client.chat.completions.create(**kwargs)
-        content = response.choices[0].message.content
+        
+        try:
+            response = self.client.chat.completions.create(**kwargs)
+            content = response.choices[0].message.content
 
-        self._emit_debug("llm_response", {
-            "_print": f"  [LLM Response] {content}\n  {'-'*60}",
-            "content": content,
-        })
+            self._emit_debug("llm_response", {
+                "_print": f"  [LLM Response] {content}\n  {'-'*60}",
+                "content": content,
+            })
 
-        return content
+            return content
+        except Exception as e:
+            print(f"[LLM] API 调用失败: {e}")
+            import traceback
+            traceback.print_exc()
+            # 返回一个默认的 beat plan，让系统可以继续运行
+            return '[{"speaker": "trip", "addressee": "player", "intent": "等待玩家反应", "urgency": "medium", "world_state_delta": {}, "state_change_hint": "气氛微妙"}]'
 
     def call_llm(self, prompt: str, max_tokens: Optional[int] = None,
                  temperature: float = 0.3) -> str:

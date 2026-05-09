@@ -78,6 +78,10 @@ interface WsErrorMessage {
   message: string
 }
 
+interface WsPlayerTurn {
+  type: 'player_turn'
+}
+
 // ── LLM 调试日志条目 ─────────────────────────────────────────────────────
 export interface LlmDebugEntry {
   id: string
@@ -103,10 +107,10 @@ interface WsLlmDebug {
   ts: number
 }
 
-type WsIncomingMessage = WsChatMessage | WsStateUpdate | WsErrorMessage | WsLlmDebug
+type WsIncomingMessage = WsChatMessage | WsStateUpdate | WsErrorMessage | WsLlmDebug | WsPlayerTurn
 
 // ── Store 类型 ────────────────────────────────────────────────────────────────
-export interface PlayStoreState {
+export interface PlayState {
   messages: ChatMessage[]
   worldState: RuntimeWorldState
   currentLandmarkId: string
@@ -122,6 +126,7 @@ export interface PlayStoreState {
   connecting: boolean // WebSocket 正在连接中
   debugLogs: LlmDebugEntry[]
   clearDebugLogs: () => void
+  isPlayerTurn: boolean // 是否轮到玩家输入
 
   // 回退栈
   _snapshotStack: PlaySnapshot[]
@@ -146,6 +151,11 @@ export interface PlayStoreState {
 let msgCounter = 0
 function uid() { return `msg_${Date.now()}_${msgCounter++}` }
 
+// 生成唯一会话ID
+function generateSessionId(): string {
+  return `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
+}
+
 const WS_URL = 'ws://localhost:8000/ws/play'
 
 // ── WebSocket 单例管理 ──────────────────────────────────────────────────────
@@ -160,11 +170,15 @@ const BASE_DELAY = 3000
 // 缓存待发送的场景数据（用于连接建立后自动发送）
 let pendingSceneData: any = null
 
+// 待发送的消息队列（用于连接中/连接失败重试）
+let pendingMessages: Array<Record<string, unknown>> = []
+
 // 开发环境下暴露调试接口
 if (process.env.NODE_ENV === 'development') {
   ;(window as any).__WS_DEBUG__ = {
     getWsInstance: () => wsInstance,
     getPendingSceneData: () => pendingSceneData,
+    getPendingMessages: () => pendingMessages,
     getReconnectAttempts: () => reconnectAttempts,
     forceConnect: () => {
       if (wsInstance) {
@@ -172,6 +186,7 @@ if (process.env.NODE_ENV === 'development') {
       }
       reconnectAttempts = 0
       pendingSceneData = null
+      pendingMessages = []
     },
   }
 }
@@ -186,9 +201,10 @@ function getReconnectDelay(): number {
 function getWs(
   storeHandler: (data: WsIncomingMessage) => void,
   onStateChange: (connected: boolean, connecting: boolean) => void,
+  forceNew: boolean = false,
 ): WebSocket {
-  // 如果已有连接且状态正常，更新 handler 后返回
-  if (wsInstance) {
+  // 如果已有连接且状态正常，更新 handler 后返回（除非强制新建）
+  if (wsInstance && !forceNew) {
     if (wsInstance.readyState === WebSocket.OPEN) {
       wsMessageHandler = storeHandler
       return wsInstance
@@ -200,30 +216,62 @@ function getWs(
     }
     // 否则清理无效连接
     safeCloseWs()
+  } else if (forceNew && wsInstance) {
+    // 强制新建会话，先断开旧连接
+    intentionalClose = true
+    safeCloseWs()
+    intentionalClose = false
+    reconnectAttempts = 0
   }
 
   wsMessageHandler = storeHandler
-  wsInstance = new WebSocket(WS_URL)
+  // 每次连接都使用唯一的会话ID
+  const sessionId = generateSessionId()
+  const wsUrlWithSession = `${WS_URL}?session_id=${sessionId}`
+  const currentWs = new WebSocket(wsUrlWithSession)
+  wsInstance = currentWs
+  console.log('[WS] 🔗 Created WebSocket, wsInstance:', !!wsInstance, 'readyState:', wsInstance.readyState)
+
+  console.log('[WS] 🔗 Connecting with session:', sessionId)
 
   onStateChange(false, true)
 
-  wsInstance.onopen = () => {
-        console.log('[WS] ✅ Connected to', WS_URL)
+  // 使用闭包保存当前连接引用，防止被后续连接覆盖
+  currentWs.onopen = () => {
+        console.log('[WS] ✅ onopen fired! wsInstance:', !!wsInstance, 'currentWs === wsInstance:', currentWs === wsInstance)
         reconnectAttempts = 0
         onStateChange(true, false)
         // 如果有缓存的场景数据，立即发送
         if (pendingSceneData) {
           console.log('[WS] 📤 Sending cached init_scene...')
           const jsonStr = JSON.stringify({ type: 'init_scene', data: pendingSceneData })
-          wsInstance?.send(jsonStr)
-          console.log(`[WS] 📤 init_scene sent (from cache): ${pendingSceneData.landmarks.length} landmarks, ${pendingSceneData.storylets.length} storylets, ${pendingSceneData.characters.length} characters`)
-          pendingSceneData = null
+          // 使用闭包中的 currentWs 而非全局 wsInstance
+          if (currentWs.readyState === WebSocket.OPEN) {
+            currentWs.send(jsonStr)
+            console.log(`[WS] 📤 init_scene sent (from cache): ${pendingSceneData.landmarks.length} landmarks, ${pendingSceneData.storylets.length} storylets, ${pendingSceneData.characters.length} characters`)
+            pendingSceneData = null
+          } else {
+            console.warn('[WS] ⚠️ WebSocket not open when trying to send cached data')
+          }
+        }
+        // 发送所有待处理的消息
+        if (pendingMessages.length > 0) {
+          console.log(`[WS] 📤 Flushing ${pendingMessages.length} pending messages...`)
+          pendingMessages.forEach((msg) => {
+            if (currentWs.readyState === WebSocket.OPEN) {
+              currentWs.send(JSON.stringify(msg))
+              console.log(`[WS] 📤 Sent pending message: ${(msg as any).type}`)
+            }
+          })
+          pendingMessages = []
         }
       }
 
-  wsInstance.onmessage = (event) => {
+  // 使用闭包保存回调，防止被覆盖
+  currentWs.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data) as WsIncomingMessage
+      console.log('[WS] 📥 onmessage received:', data.type, data)
       if (data.type === 'llm_debug') {
         console.debug('[WS] 📝 LLM Debug:', data.event)
       }
@@ -237,8 +285,8 @@ function getWs(
     }
   }
 
-  wsInstance.onclose = (event) => {
-    console.log(`[WS] 🚪 Disconnected (code: ${event.code}, reason: ${event.reason})`)
+  currentWs.onclose = (event) => {
+    console.log(`[WS] 🚪 Disconnected (code: ${event.code}, reason: ${event.reason}), wsInstance:`, !!wsInstance, 'currentWs === wsInstance:', currentWs === wsInstance)
     onStateChange(false, false)
 
     if (intentionalClose) {
@@ -260,12 +308,12 @@ function getWs(
     }, delay)
   }
 
-  wsInstance.onerror = (error) => {
+  currentWs.onerror = (error) => {
     console.error('[WS] ❌ Error:', error)
     onStateChange(false, false)
   }
 
-  return wsInstance
+  return currentWs
 }
 
 function safeCloseWs(): void {
@@ -283,7 +331,12 @@ function safeCloseWs(): void {
     return
   }
 
+  // 清除所有回调，防止旧连接的回调被触发
+  wsInstance.onopen = null
   wsInstance.onclose = null
+  wsInstance.onmessage = null
+  wsInstance.onerror = null
+  
   try {
     wsInstance.close()
   } catch (e) {
@@ -298,9 +351,12 @@ function closeWs(): void {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
+  console.log('[WS] closeWs called, closing existing wsInstance:', !!wsInstance)
   safeCloseWs()
   wsMessageHandler = null
   reconnectAttempts = 0
+  // 清理待处理消息队列
+  pendingMessages = []
 }
 
 /** 从 useStore 读取当前编辑器数据，发送 init_scene 给后端 */
@@ -311,6 +367,11 @@ export function sendInitScene() {
     storylets: state.storylets,
     characters: state.characters,
     world_state_definition: state.worldStateDefinition,
+    shared_context: state.sharedContext,
+    action_library: state.actionLibrary,
+    expression_library: state.expressionLibrary,
+    prop_library: state.propLibrary,
+    location_library: state.locationLibrary,
   }
 
   // 始终先缓存，确保 onopen 时一定能拿到
@@ -319,13 +380,13 @@ export function sendInitScene() {
   // 如果连接已打开，直接发送
   if (wsInstance && wsInstance.readyState === WebSocket.OPEN) {
     wsInstance.send(JSON.stringify({ type: 'init_scene', data: sceneData }))
-    console.log(`[WS] 📤 init_scene sent: ${sceneData.landmarks.length} landmarks, ${sceneData.storylets.length} storylets, ${sceneData.characters.length} characters`)
+    console.log(`[WS] 📤 init_scene sent: ${sceneData.landmarks.length} landmarks, ${sceneData.storylets.length} storylets, ${sceneData.characters.length} characters, ${sceneData.action_library.length} actions, ${sceneData.expression_library.length} expressions, ${sceneData.prop_library.length} props, ${sceneData.location_library.length} locations`)
     pendingSceneData = null
   }
 }
 
 // ── Store 实现 ────────────────────────────────────────────────────────────────
-export const usePlayStore = create<PlayStoreState>()(
+export const usePlayStore = create<PlayState>()(
   immer((set, get) => ({
     messages: [],
     worldState: { qualities: {}, flags: {}, relationships: {} },
@@ -341,6 +402,7 @@ export const usePlayStore = create<PlayStoreState>()(
     connecting: false,
     _snapshotStack: [],
     debugLogs: [],
+    isPlayerTurn: false,
 
     setDebugOpen: (open) => set((s) => { s.debugOpen = open }),
     clearDebugLogs: () => set((s) => { s.debugLogs = [] }),
@@ -349,15 +411,26 @@ export const usePlayStore = create<PlayStoreState>()(
       get().connect()
     },
 
-    connect: () => {
+    connect: (forceNew: boolean = false) => {
       const s = get()
-      if (s.connected || s.connecting) return
+      console.log('[WS] connect() called, forceNew:', forceNew, 'current state - connected:', s.connected, 'connecting:', s.connecting)
+      // 如果强制新建，先断开旧连接并清理旧消息
+      if (forceNew && (s.connected || s.connecting)) {
+        console.log('[WS] forceNew=true and already connected/connecting, calling closeWs()')
+        closeWs()
+        set((st) => { st.connected = false; st.connecting = false })
+      }
+      if (!forceNew && (s.connected || s.connecting)) {
+        console.log('[WS] Skipping connect - already connected or connecting')
+        return
+      }
       reconnectAttempts = 0
       intentionalClose = false
       set((st) => { st.connected = false; st.connecting = true })
       getWs(
         (data) => get()._handleWsMessage(data),
         (connected, connecting) => set((st) => { st.connected = connected; st.connecting = connecting }),
+        forceNew,
       )
     },
 
@@ -368,15 +441,21 @@ export const usePlayStore = create<PlayStoreState>()(
 
     _sendWs: (data) => {
       const ws = wsInstance
+      console.log('[WS] _sendWs called, ws:', !!ws, ws ? ws.readyState : 'N/A', 'message type:', (data as any).type)
       if (!ws) {
-        console.warn('[WS] ⚠️ No WebSocket instance')
+        console.warn('[WS] ⚠️ No WebSocket instance, queueing message:', (data as any).type)
+        pendingMessages.push(data)
         return
       }
-      if (ws.readyState !== WebSocket.OPEN) {
-        console.warn('[WS] ⚠️ WebSocket not open (state:', ws.readyState, ')')
-        return
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(data))
+      } else if (ws.readyState === WebSocket.CONNECTING) {
+        console.log('[WS] WebSocket connecting, queueing message:', (data as any).type)
+        pendingMessages.push(data)
+      } else {
+        console.warn('[WS] ⚠️ WebSocket not open (state:', ws.readyState, '), queueing message:', (data as any).type)
+        pendingMessages.push(data)
       }
-      ws.send(JSON.stringify(data))
     },
 
     _handleWsMessage: (data) => {
@@ -393,6 +472,12 @@ export const usePlayStore = create<PlayStoreState>()(
             isSilence: (data as any).is_silence,
             timestamp: Date.now(),
           })
+        })
+      } else if (data.type === 'player_turn') {
+        console.log('[WS] 🎮 Player turn')
+        set((s) => {
+          s.isPlayerTurn = true
+          s.isLoading = false
         })
       } else if (data.type === 'state_update') {
         console.log('[WS] 🔄 State update received')
@@ -447,10 +532,6 @@ export const usePlayStore = create<PlayStoreState>()(
     sendMessage: (text) => {
       const s = get()
       if (s.isLoading || s.gameEnded) return
-      if (!s.connected) {
-        console.warn('[WS] ⚠️ Cannot send message - not connected')
-        return
-      }
 
       const isSilence = !text.trim()
       const displayText = isSilence ? '……' : text
@@ -473,6 +554,7 @@ export const usePlayStore = create<PlayStoreState>()(
           timestamp: Date.now(),
         })
         st.isLoading = true
+        st.isPlayerTurn = false
       })
 
       get()._sendWs({ type: 'player_input', text })

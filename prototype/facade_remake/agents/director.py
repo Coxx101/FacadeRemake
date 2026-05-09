@@ -110,7 +110,7 @@ class GoalTracker:
 已过回合数：{self.current_goal.current_turns}
 
 最近对话：
-{chr(10).join(dialogue_history[-5:]) if dialogue_history else '(无)'}
+{chr(10).join(dialogue_history[-15:]) if dialogue_history else '(无)'}
 
 请评估：这个叙事目标是否已经基本完成？
 - "YES"：目标已完成或接近完成，角色已经做出了预期的反应
@@ -329,9 +329,13 @@ class DirectorAgent:
         director_note = storylet_content.get("director_note", "")
         tone = storylet_content.get("tone", "neutral")
 
-        # 只取最近 2 条对话（减少 token）
-        recent_text = "\n".join(dialogue_history[-2:]) if dialogue_history else "(无)"
+        # 保留完整对话历史（最近15条，确保上下文连贯性）
+        recent_text = "\n".join(dialogue_history[-15:]) if dialogue_history else "(无)"
         tension = world_state.get("qualities", {}).get("tension", 0)
+
+        # 调试：验证传递给导演的上下文完整性
+        if self.debug_mode:
+            print(f"[Director上下文] 对话历史共 {len(dialogue_history)} 条，传递 {min(len(dialogue_history), 15)} 条给 LLM")
 
         # 完整版 system prompt（确保格式正确）
         system_msg = """你是互动叙事导演，为戏剧片段规划对话节拍（BeatPlan）。

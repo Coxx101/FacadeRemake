@@ -5,8 +5,8 @@ GameEngine - 核心游戏逻辑
 import asyncio
 from typing import List, Dict, Any, Optional
 
-from core.di_container import DIContainer
-from engine.output import (
+from facade_remake.core.di_container import DIContainer
+from facade_remake.engine.output import (
     game_banner, character_speaking_hint, character_line, waiting_for_player,
     narrator_text, state_change, system_message, debug_message, reading_delay_info,
     nudge_message, storylet_entered, storylet_ended, landmark_entered, ending,
@@ -40,6 +40,7 @@ def calc_reading_delay(char_count: int, urgency: str = "medium") -> float:
 class GameEngine:
     def __init__(self, debug_mode: bool = True, provider: Optional[str] = None, scenario_config=None):
         self.debug_mode = debug_mode
+        self._has_scenario_config = scenario_config is not None
 
         self.container = DIContainer(debug_mode=debug_mode, provider=provider, scenario_config=scenario_config)
         self.container.init_world_state()
@@ -49,14 +50,26 @@ class GameEngine:
         self.state_manager = self.container.state_manager
         self.logger = self.container.logger
         self.llm_client = self.container.llm_client
-        self.input_parser = self.container.input_parser
         self.condition_store = self.container.condition_store
-        self.trip_agent = self.container.trip_agent
-        self.grace_agent = self.container.grace_agent
         self.storylet_manager = self.container.storylet_manager
         self.landmark_manager = self.container.landmark_manager
-        self.story_selector = self.container.story_selector
-        self.director = self.container.director
+
+        # 动态角色管理 - 支持任意数量的自定义角色
+        self._character_agents: Dict[str, Any] = {}
+
+        # 延迟初始化依赖场景配置的组件
+        self._input_parser = None
+        self._story_selector = None
+        self._director = None
+
+        # 如果有 scenario_config，立即初始化所有组件
+        if self._has_scenario_config:
+            self.input_parser = self.container.input_parser
+            self.story_selector = self.container.story_selector
+            self.director = self.container.director
+            # 从场景配置加载角色
+            for char_id in self.container.list_characters():
+                self._character_agents[char_id] = self.container.get_character_agent(char_id)
 
         self.state_manager.add_change_listener(self._on_state_change)
 
@@ -78,7 +91,78 @@ class GameEngine:
         self.last_beat_char_count = 0
         self._player_turn_active = False
 
-        self.landmark_manager.set_current("lm_1_arrive", self.world_state)
+        # 如果有 scenario_config，设置初始 landmark
+        if self._has_scenario_config:
+            self.landmark_manager.set_current("lm_1_arrive", self.world_state)
+
+    @property
+    def input_parser(self):
+        if self._input_parser is None:
+            self._input_parser = self.container.input_parser
+        return self._input_parser
+
+    @input_parser.setter
+    def input_parser(self, value):
+        self._input_parser = value
+
+    @property
+    def story_selector(self):
+        if self._story_selector is None:
+            self._story_selector = self.container.story_selector
+        return self._story_selector
+
+    @story_selector.setter
+    def story_selector(self, value):
+        self._story_selector = value
+
+    @property
+    def director(self):
+        if self._director is None:
+            self._director = self.container.director
+        return self._director
+
+    @director.setter
+    def director(self, value):
+        self._director = value
+
+    # ─── 动态角色管理接口 ──────────────────────────────────────────────────────
+
+    def get_character_agent(self, character_id: str):
+        """获取指定角色的 Agent"""
+        if character_id not in self._character_agents:
+            # 尝试从容器获取
+            if self.container.has_character(character_id):
+                agent = self.container.get_character_agent(character_id)
+                self._character_agents[character_id] = agent
+                return agent
+            raise ValueError(f"角色 '{character_id}' 未注册")
+        return self._character_agents[character_id]
+
+    def register_character_agent(self, character_id: str, agent):
+        """注册角色 Agent"""
+        self._character_agents[character_id] = agent
+
+    def list_characters(self) -> List[str]:
+        """获取所有已注册角色的 ID 列表"""
+        return list(self._character_agents.keys())
+
+    def has_character(self, character_id: str) -> bool:
+        """检查角色是否已注册"""
+        return character_id in self._character_agents
+
+    def clear_characters(self):
+        """清除所有角色 Agent"""
+        self._character_agents.clear()
+
+    def update_characters_from_container(self):
+        """从容器同步角色列表"""
+        self._character_agents.clear()
+        for char_id in self.container.list_characters():
+            self._character_agents[char_id] = self.container.get_character_agent(char_id)
+
+    @director.setter
+    def director(self, value):
+        self._director = value
 
     def _on_state_change(self, delta: Dict[str, Any], hint: str):
         self.logger.record_state_change(delta)
@@ -339,7 +423,16 @@ class GameEngine:
         current_landmark = self.landmark_manager.get_current()
         forbidden_topics = current_landmark.get_forbidden_reveals() if current_landmark else []
 
-        agent = self.trip_agent if character == "trip" else self.grace_agent
+        agent = self.get_character_agent(character)
+        
+        # 调试：验证上下文同步完整性
+        if self.debug_mode:
+            self.logger.debug(
+                f"[上下文同步] {character} 接收对话历史: {len(self.conversation_history)} 条 | "
+                f"最近3条: {self.conversation_history[-3:] if len(self.conversation_history) >= 3 else self.conversation_history}",
+                module="context_sync"
+            )
+        
         result = agent.generate_response(
             player_input,
             effective_content,
@@ -358,6 +451,10 @@ class GameEngine:
         dialogue = self._clean_response_prefix(dialogue, character)
 
         character_line(character, dialogue, actions, thought, self.debug_mode)
+
+        # 触发角色说话事件（用于 WebSocket 推送）
+        if self.event_loop:
+            self.event_loop.emit("character_speaking", character, dialogue, actions, thought)
 
         history_line = self._format_history_line(character, dialogue, actions)
         if history_line:

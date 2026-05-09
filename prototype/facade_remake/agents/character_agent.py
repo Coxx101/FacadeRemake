@@ -187,9 +187,10 @@ class CharacterAgent:
         parts.append("\n" + self._build_location_library_text())
         parts.append("\n" + self._build_prop_library_text())
 
+        # 完整对话历史上下文（保留最近15条）
         if context.dialogue_history:
-            parts.append("\n【对话历史】")
-            for line in context.dialogue_history:
+            parts.append(f"\n【对话历史】(共 {len(context.dialogue_history)} 条)")
+            for line in context.dialogue_history[-15:]:
                 parts.append(f"- {line}")
 
         if context.player_input:

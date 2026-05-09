@@ -4,6 +4,7 @@ import LandmarkCanvas from './components/canvas/LandmarkCanvas'
 import Inspector from './components/inspector/Inspector'
 import CharactersPanel from './components/characters/CharactersPanel'
 import WorldStatePanel from './components/worldstate/WorldStatePanel'
+import LibraryPanel from './components/library/LibraryPanel'
 import StoryletModal from './components/modal/StoryletModal'
 import PlayMode from './components/play/PlayMode'
 import StartScreen from './components/StartScreen'
@@ -69,12 +70,14 @@ function DesignMode() {
         onMouseLeave={(e) => { if (!isResizing.current) (e.currentTarget.style.background = '#2e3250') }}
       />
 
-      {/* 右侧：Inspector / CharactersPanel / WorldStatePanel（动态宽度） */}
+      {/* 右侧：Inspector / CharactersPanel / WorldStatePanel / LibraryPanel（动态宽度） */}
       {rightPanel === 'inspector'
         ? <Inspector />
         : rightPanel === 'characters'
           ? <CharactersPanel />
-          : <WorldStatePanel />
+          : rightPanel === 'worldstate'
+            ? <WorldStatePanel />
+            : <LibraryPanel />
       }
     </div>
   )

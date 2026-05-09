@@ -1,4 +1,4 @@
-import type { Landmark, Storylet, CharacterProfile, SharedContext, WorldStateDefinition, BehaviorMeta } from '../types'
+import type { Landmark, Storylet, CharacterProfile, SharedContext, WorldStateDefinition, ActionEntry, ExpressionEntry, PropEntry, LocationEntry } from '../types'
 
 // ── 默认 WorldState 定义（与 Python 后端 _init_world_state 对齐）─────────────
 
@@ -39,28 +39,6 @@ export const defaultSharedContext: SharedContext = {
 
 // ── 默认角色设定 ──────────────────────────────────────────────────────────
 
-// 行为元数据（与 Python data/character_behaviors.py BEHAVIOR_META 对齐）
-const defaultBehaviorMeta: Record<string, BehaviorMeta> = {
-  deflect: { id: 'deflect', label: '转移话题', description: '用另一个话题、问题或行为来打断当前话题，但不算强硬回避——更像是下意识的转向。', tone_hint: 'guarded', salience_boost: 0 },
-  go_quiet: { id: 'go_quiet', label: '沉默', description: '不说话，用沉默、停顿或轻微的肢体动作回应。可以只输出一句括号内的动作描述。', tone_hint: 'heavy', salience_boost: 1 },
-  make_excuse: { id: 'make_excuse', label: '找借口', description: '给出一个听起来合理但实际上是托词的解释，语气自然，不像是在撒谎，更像习惯性逃避。', tone_hint: 'flat', salience_boost: 0 },
-  ask_player: { id: 'ask_player', label: '求助/询问玩家', description: '将话头转给老友，询问他的意见、感受或经历，有时是真心求助，有时是转移焦点。', tone_hint: 'open', salience_boost: 2 },
-  surface_normal: { id: 'surface_normal', label: '维持表面正常', description: '说一些完全正常的寒暄话，表现得一切如常，但细节里藏着微妙的不自然。', tone_hint: 'neutral', salience_boost: 0 },
-  subtle_hint: { id: 'subtle_hint', label: '话里有话', description: '说的是一件事，但言外之意指向别的什么。语气平静，让人听后要回味才能察觉。', tone_hint: 'loaded', salience_boost: 2 },
-  admit: { id: 'admit', label: '承认真相', description: '说出一部分或全部真相。不是慷慨激昂的坦白，更像是憋不住了、或者被逼得没有退路了才说。', tone_hint: 'heavy', salience_boost: 5 },
-  get_angry: { id: 'get_angry', label: '情绪爆发', description: '用强硬甚至愤怒的语气回击，但这份怒气里有一部分是针对自己的。可以摔杯子、抬高声音或转身。', tone_hint: 'volatile', salience_boost: 3 },
-  apologize: { id: 'apologize', label: '道歉', description: '说出迟来的抱歉。Trip 不擅长软话，所以这个道歉可能显得笨拙、不完整，但是真诚的。', tone_hint: 'heavy', salience_boost: 5 },
-  shut_down: { id: 'shut_down', label: '彻底关闭', description: '拒绝继续对话，用行动（离开、看手机、假装忙）切断交流，但身体语言出卖了他的焦虑。', tone_hint: 'cold', salience_boost: 1 },
-  cold_truth: { id: 'cold_truth', label: '冷静说出真相', description: '用非常平静、几乎没有情绪的语气说出一个可以切开空气的真相。这比大喊大叫更有压迫感。', tone_hint: 'ice', salience_boost: 5 },
-  care_through_action: { id: 'care_through_action', label: '用行动表达关心', description: '不说话，但通过给老友倒酒、递毯子或整理靠垫等动作表达情感，情绪藏在动作里。', tone_hint: 'warm', salience_boost: 1 },
-  controlled_sarcasm: { id: 'controlled_sarcasm', label: '克制的讽刺', description: '用语气或措辞表达不满，但保持表面的礼貌。讽刺是长期压抑的怒气渗出来的方式。', tone_hint: 'sharp', salience_boost: 2 },
-  withdraw: { id: 'withdraw', label: '情感撤退', description: '表面上继续做事（整理画、调酒），实际上已经从对话中退出，只剩下躯壳在场。', tone_hint: 'distant', salience_boost: 1 },
-  break_down: { id: 'break_down', label: '情绪崩溃', description: '长时间的压抑终于破防。不是大哭，更像是声音突然变小、眼睛红了、或者放下了酒杯说不下去。', tone_hint: 'raw', salience_boost: 4 },
-}
-
-const tripBehaviors = ['deflect', 'make_excuse', 'get_angry', 'go_quiet', 'ask_player', 'surface_normal', 'subtle_hint', 'admit', 'apologize', 'shut_down']
-const graceBehaviors = ['deflect', 'go_quiet', 'ask_player', 'surface_normal', 'subtle_hint', 'cold_truth', 'care_through_action', 'controlled_sarcasm', 'withdraw', 'break_down']
-
 export const defaultCharacters: CharacterProfile[] = [
   {
     id: 'trip',
@@ -89,8 +67,6 @@ export const defaultCharacters: CharacterProfile[] = [
         emotion_tags: ['自卑', '不甘'],
       },
     ],
-    behaviors: tripBehaviors,
-    behavior_meta: defaultBehaviorMeta,
   },
   {
     id: 'grace',
@@ -119,8 +95,6 @@ export const defaultCharacters: CharacterProfile[] = [
         emotion_tags: ['失落', '压抑的愤怒'],
       },
     ],
-    behaviors: graceBehaviors,
-    behavior_meta: defaultBehaviorMeta,
   },
 ]
 
@@ -626,4 +600,48 @@ export const defaultStorylets: Storylet[] = [
     completion_trigger: undefined,
     force_wrap_up: undefined,
   },
+]
+
+// ─── 默认库数据（Design 模式可编辑）───────────────────────────────────
+
+export const defaultActionLibrary: ActionEntry[] = [
+  { id: 'walk_to', label: '走到', description: '移动到目标地点', parameters: ['target_location'] },
+  { id: 'pick_up', label: '拿起', description: '拾取物品', parameters: ['prop'] },
+  { id: 'put_down', label: '放下', description: '放下物品', parameters: ['prop'] },
+  { id: 'give', label: '递给', description: '将物品递给某人', parameters: ['prop', 'target'] },
+  { id: 'gesture', label: '手势', description: '做出手势', parameters: ['gesture_type'] },
+  { id: 'look_at', label: '看向', description: '注视目标', parameters: ['target'] },
+  { id: 'sit_down', label: '坐下', description: '坐下', parameters: [] },
+  { id: 'stand_up', label: '站起来', description: '站立', parameters: [] },
+  { id: 'pour', label: '倒', description: '倒饮料', parameters: ['prop'] },
+  { id: 'sigh', label: '叹气', description: '叹气', parameters: [] },
+  { id: 'laugh', label: '笑', description: '笑', parameters: [] },
+  { id: 'say', label: '说话', description: '说出对话内容，触发唇形动画', parameters: ['dialogue'] },
+  { id: 'pause', label: '停顿', description: '停顿思考', parameters: [] },
+]
+
+export const defaultExpressionLibrary: ExpressionEntry[] = [
+  { id: 'neutral', label: '中性', animation_name: 'neutral' },
+  { id: 'happy', label: '开心', animation_name: 'smile' },
+  { id: 'sad', label: '难过', animation_name: 'sad' },
+  { id: 'angry', label: '生气', animation_name: 'angry' },
+  { id: 'thinking', label: '思考', animation_name: 'thinking' },
+  { id: 'embarrassed', label: '尴尬', animation_name: 'embarrassed' },
+  { id: 'smirk', label: '得意', animation_name: 'smirk' },
+  { id: 'confused', label: '困惑', animation_name: 'confused' },
+]
+
+export const defaultPropLibrary: PropEntry[] = [
+  { id: 'wine_glass', label: '酒杯' },
+  { id: 'bottle', label: '酒瓶' },
+  { id: 'plate', label: '盘子' },
+  { id: 'napkin', label: '餐巾' },
+  { id: 'cushion', label: '靠垫' },
+]
+
+export const defaultLocationLibrary: LocationEntry[] = [
+  { id: 'living_room', label: '客厅', adjacent: ['kitchen', 'dining_room'] },
+  { id: 'kitchen', label: '厨房', adjacent: ['living_room'] },
+  { id: 'dining_room', label: '餐厅', adjacent: ['living_room'] },
+  { id: 'balcony', label: '阳台', adjacent: ['living_room'] },
 ]

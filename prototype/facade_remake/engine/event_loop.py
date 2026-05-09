@@ -1,9 +1,10 @@
 """
 GameEventLoop - 异步事件循环
 管理所有 asyncio 逻辑：双轨道（input/push/consumer）、事件队列、任务管理
+支持事件订阅机制，用于 WebSocket 集成
 """
 import asyncio
-from typing import Optional
+from typing import Optional, Callable, Dict, List, Any
 
 from engine.game_engine import GameEngine, PLAYER_TURN_TIMEOUT, calc_reading_delay
 from engine.output import (
@@ -23,10 +24,37 @@ class GameEventLoop:
         self.pending_beat_task: Optional[asyncio.Task] = None
         self.beat_plan_ready: Optional[asyncio.Event] = None
         self.beat_done_event: Optional[asyncio.Event] = None
+        
+        # 事件监听器
+        self._listeners: Dict[str, List[Callable[..., None]]] = {}
+
+    def on(self, event_name: str):
+        """注册事件监听器（支持装饰器语法）"""
+        def decorator(handler: Callable[..., None]):
+            if event_name not in self._listeners:
+                self._listeners[event_name] = []
+            self._listeners[event_name].append(handler)
+            return handler
+        return decorator
+
+    def emit(self, event_name: str, *args, **kwargs):
+        """触发事件"""
+        if event_name in self._listeners:
+            for handler in self._listeners[event_name]:
+                try:
+                    handler(*args, **kwargs)
+                except Exception as e:
+                    self.engine.logger.error(f"事件处理错误: {e}", module="event", exception=e)
 
     def notify_beat_done(self):
         if self._loop and self.beat_done_event:
             self._loop.call_soon_threadsafe(self.beat_done_event.set)
+
+    def stop(self):
+        """停止事件循环"""
+        self.engine.game_ended = True
+        if self.pending_beat_task and not self.pending_beat_task.done():
+            self.pending_beat_task.cancel()
 
     async def start(self):
         self._loop = asyncio.get_running_loop()
@@ -101,6 +129,8 @@ class GameEventLoop:
                     self.engine.beat_index += 1
                     self.engine._player_turn_active = True
                     waiting_for_player()
+                    # 触发等待玩家事件
+                    self.emit("waiting_for_player")
                     try:
                         await asyncio.wait_for(
                             self._wait_for_player_during_turn(),

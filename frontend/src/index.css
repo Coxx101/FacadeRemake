@@ -1,7 +1,7 @@
-@import "tailwindcss";
-
 /* ── 字体引入 ── */
 @import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
+
+@import "tailwindcss";
 
 /* ── Tailwind v4 @theme 扩展 ── */
 @theme {

@@ -126,12 +126,12 @@ def _parse_action_sequence(actions: str) -> str:
 
 def character_line(character: str, speech: str, action: str = "", thought: str = "", debug: bool = False):
     if thought and debug:
-        print(f"\n  💭 [{character} 内心] {thought}")
+        print(f"\n  [thought] [{character} 内心] {thought}")
     if speech and action:
         print(f"\n{character}: {speech}")
         action_text = _parse_action_sequence(action)
         if action_text:
-            print(f"  → {action_text}")
+            print(f"  -> {action_text}")
     elif speech:
         print(f"\n{character}: {speech}")
     elif action:

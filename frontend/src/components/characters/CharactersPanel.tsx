@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Users, ChevronLeft, Pin } from 'lucide-react'
 import { useStore } from '../../store/useStore'
-import type { CharacterProfile, MonologueTemplate, BehaviorMeta } from '../../types'
+import type { CharacterProfile, MonologueTemplate } from '../../types'
 import {
   inputStyle, selectStyle, addBtnStyle, removeBtnStyle,
 } from '../inspector/Inspector'
@@ -23,7 +23,6 @@ export default function CharactersPanel() {
     addCharacter({
       id, name: '新角色', identity: '', personality: '',
       background: [], secret_knowledge: [], ng_words: [], monologues: [],
-      behaviors: [], behavior_meta: {},
     })
     selectCharacter(id)
   }
@@ -171,8 +170,6 @@ function CharacterEditor({ character }: { character: CharacterProfile }) {
     background: true,
     secrets: true,
     monologues: true,
-    ng_words: false,
-    behaviors: false,
   })
 
   const toggleSection = (key: string) => {
@@ -258,23 +255,6 @@ function CharacterEditor({ character }: { character: CharacterProfile }) {
           <MonologueListEditor
             monologues={form.monologues}
             onChange={(monologues) => { set('monologues', monologues); setTimeout(save, 50) }}
-          />
-        </CollapsibleSection>
-
-        {/* 禁用词 */}
-        <CollapsibleSection title={`禁用词 (${form.ng_words.length})`} expanded={expandedSections.ng_words} onToggle={() => toggleSection('ng_words')}>
-          <TagInput
-            tags={form.ng_words}
-            onChange={(tags) => { set('ng_words', tags); setTimeout(save, 50) }}
-          />
-        </CollapsibleSection>
-
-        {/* 行为库 */}
-        <CollapsibleSection title={`行为库 (${form.behaviors?.length ?? 0})`} expanded={expandedSections.behaviors ?? false} onToggle={() => toggleSection('behaviors')}>
-          <BehaviorListEditor
-            behaviorIds={form.behaviors ?? []}
-            behaviorMeta={form.behavior_meta ?? {}}
-            onChange={(behaviors, behavior_meta) => { set('behaviors', behaviors); set('behavior_meta', behavior_meta); setTimeout(save, 50) }}
           />
         </CollapsibleSection>
 
@@ -543,92 +523,6 @@ function TagInput({ tags, onChange }: { tags: string[]; onChange: (tags: string[
           style={addBtnStyle}
         >+</button>
       </div>
-    </div>
-  )
-}
-
-// ── 行为列表编辑器 ──────────────────────────────────────────────────────────
-
-function BehaviorListEditor({
-  behaviorIds,
-  behaviorMeta,
-  onChange,
-}: {
-  behaviorIds: string[]
-  behaviorMeta: Record<string, BehaviorMeta>
-  onChange: (ids: string[], meta: Record<string, BehaviorMeta>) => void
-}) {
-  const addBehavior = () => {
-    const id = prompt('输入行为 ID（英文，如 deflect）：')
-    if (!id || !id.trim()) return
-    const trimmed = id.trim().toLowerCase().replace(/\s+/g, '_')
-    if (behaviorIds.includes(trimmed)) return
-    const newMeta: Record<string, BehaviorMeta> = {
-      ...behaviorMeta,
-      [trimmed]: { id: trimmed, label: trimmed, description: '', tone_hint: 'neutral', salience_boost: 0 },
-    }
-    onChange([...behaviorIds, trimmed], newMeta)
-  }
-
-  const removeBehavior = (id: string) => {
-    const newMeta = { ...behaviorMeta }
-    delete newMeta[id]
-    onChange(behaviorIds.filter((b) => b !== id), newMeta)
-  }
-
-  const updateMeta = (id: string, patch: Partial<BehaviorMeta>) => {
-    const meta = behaviorMeta[id]
-    if (!meta) return
-    onChange(behaviorIds, { ...behaviorMeta, [id]: { ...meta, ...patch } })
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      {behaviorIds.map((bid) => {
-        const meta = behaviorMeta[bid]
-        return (
-          <div key={bid} style={{
-            border: '1px solid #2e3250', borderRadius: '4px',
-            padding: '6px 8px', background: '#131828',
-            display: 'flex', flexDirection: 'column', gap: '4px',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: '#7090e0', fontSize: '11px', fontFamily: 'monospace', fontWeight: 600 }}>
-                {bid}
-              </span>
-              <button onClick={() => removeBehavior(bid)} style={removeBtnStyle} title="删除行为">×</button>
-            </div>
-            <input
-              value={meta?.label ?? ''}
-              onChange={(e) => updateMeta(bid, { label: e.target.value })}
-              style={{ ...inputStyle, fontSize: '11px' }}
-              placeholder="中文标签（如：转移话题）"
-            />
-            <input
-              value={meta?.description ?? ''}
-              onChange={(e) => updateMeta(bid, { description: e.target.value })}
-              style={{ ...inputStyle, fontSize: '11px' }}
-              placeholder="行为描述（供 LLM 参考）"
-            />
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <input
-                value={meta?.tone_hint ?? ''}
-                onChange={(e) => updateMeta(bid, { tone_hint: e.target.value })}
-                style={{ ...inputStyle, fontSize: '11px', width: '50%' }}
-                placeholder="tone_hint（如：guarded）"
-              />
-              <input
-                type="number"
-                value={meta?.salience_boost ?? 0}
-                onChange={(e) => updateMeta(bid, { salience_boost: parseInt(e.target.value) || 0 })}
-                style={{ ...inputStyle, fontSize: '11px', width: '50%' }}
-                placeholder="salience_boost"
-              />
-            </div>
-          </div>
-        )
-      })}
-      <button onClick={addBehavior} style={addBtnStyle}>+ 添加行为</button>
     </div>
   )
 }
