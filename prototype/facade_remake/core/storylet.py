@@ -45,6 +45,15 @@ class Storylet:
     times_triggered: int = 0
     last_triggered_turn: int = -1
     
+    # 【新增】基于角色的初始位置配置
+    # 格式: {"char_trip": "loc_kitchen", "char_grace": "loc_kitchen", "player": "loc_kitchen"}
+    initial_locations: Dict[str, str] = field(default_factory=dict)
+    
+    # 【新增】位置约束（可选）
+    # 限制只有特定位置的角色才能触发此 Storylet
+    # 格式: {"any_of": ["loc_kitchen", "loc_dining"]} 或 {"all_of": ["loc_kitchen"]}
+    location_requirements: Optional[Dict[str, Any]] = None
+    
     def calculate_salience(self, world_state) -> float:
         """计算 Salience 得分"""
         base = self.salience.get("base", 5)
@@ -110,7 +119,10 @@ class Storylet:
             salience=data.get("salience", {}),
             on_interrupt=data.get("on_interrupt", "pause"),
             completion_trigger=data.get("completion_trigger"),
-            force_wrap_up=data.get("force_wrap_up")
+            force_wrap_up=data.get("force_wrap_up"),
+            # 【新增】位置配置
+            initial_locations=data.get("initial_locations", {}),
+            location_requirements=data.get("location_requirements"),
         )
 
         return storylet

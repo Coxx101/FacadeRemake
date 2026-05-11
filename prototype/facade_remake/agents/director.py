@@ -320,8 +320,18 @@ class DirectorAgent:
     def generate_beat_plan(self,
                            storylet_content: Dict[str, Any],
                            world_state: Dict[str, Any],
-                           dialogue_history: List[str]) -> List[Dict[str, Any]]:
-        """为当前 Storylet 生成对话节拍序列"""
+                           dialogue_history: List[str],
+                           entity_locations: Dict[str, str] = None,
+                           all_locations: List[Dict] = None) -> List[Dict[str, Any]]:
+        """为当前 Storylet 生成对话节拍序列
+        
+        Args:
+            storylet_content: Storylet 内容
+            world_state: 世界状态（可包含 player_location）
+            dialogue_history: 对话历史
+            entity_locations: 实体位置映射 {entity_id: location_id}
+            all_locations: 所有地点列表 [{id, label, adjacent}, ...]
+        """
         if not self.llm_client:
             return []
 
@@ -332,12 +342,36 @@ class DirectorAgent:
         # 保留完整对话历史（最近15条，确保上下文连贯性）
         recent_text = "\n".join(dialogue_history[-15:]) if dialogue_history else "(无)"
         tension = world_state.get("qualities", {}).get("tension", 0)
+        
+        # 【新增】构建位置上下文
+        location_context = ""
+        if entity_locations and all_locations:
+            location_map = {loc["id"]: loc["label"] for loc in all_locations}
+            player_loc = world_state.get("player_location", "")
+            player_loc_label = location_map.get(player_loc, player_loc) if player_loc else "未知"
+            
+            location_context = f"""
+【位置信息】
+玩家当前位置：{player_loc_label}
+各角色位置："""
+            
+            for entity_id, loc_id in entity_locations.items():
+                loc_label = location_map.get(loc_id, loc_id)
+                # 提取角色名称
+                char_name = entity_id.split("_", 1)[-1].replace("_", " ").title()
+                location_context += f"\n  - {char_name}({entity_id}): {loc_label}"
+            
+            # 添加共处一地的角色提示
+            same_location_chars = []
+            for entity_id, loc_id in entity_locations.items():
+                if loc_id == player_loc:
+                    char_name = entity_id.split("_", 1)[-1].replace("_", " ").title()
+                    same_location_chars.append(char_name)
+            
+            if same_location_chars:
+                location_context += f"\n当前同处一地：{', '.join(same_location_chars)}"
 
-        # 调试：验证传递给导演的上下文完整性
-        if self.debug_mode:
-            print(f"[Director上下文] 对话历史共 {len(dialogue_history)} 条，传递 {min(len(dialogue_history), 15)} 条给 LLM")
-
-        # 完整版 system prompt（确保格式正确）
+        max_retries = 2
         system_msg = """你是互动叙事导演，为戏剧片段规划对话节拍（BeatPlan）。
 
 核心规则：
@@ -348,99 +382,75 @@ class DirectorAgent:
 
 重要：intent 字段必须用第三人称描述，只写角色名字（trip/grace），禁止出现"你"字！
 
+重要：必须根据【位置信息】生成合理的对话！只有同处一地的角色才能直接对话。
+
 每个 beat 格式（JSON）：
 {"speaker": "trip|grace|player_turn", "addressee": "player|grace|all", "intent": "叙事目的（第三人称，如'Trip 向 Grace 追问' 或 'Grace 观察玩家的反应'，禁止使用'你'字）", "urgency": "low|medium|high", "world_state_delta": {"tension": 1}, "state_change_hint": "气氛描述"}"""
 
         user_msg = f"""叙事目标：{narrative_goal}
 场景：{director_note[:100] if director_note else '无'}
 基调：{tone}
-张力：{tension}
+张力：{tension}{location_context}
 最近对话：{recent_text}
 
 规划节拍："""
 
-        try:
-            messages = [
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": user_msg},
-            ]
-            raw = self.llm_client.chat_completion(messages, temperature=0.8, max_tokens=500)
-            raw = raw.strip()
-
-            import re
-            # 尝试提取 JSON 数组
-            if "```" in raw:
-                # 尝试匹配 ```json ... ``` 块内的内容
-                json_match = re.search(r'```json\s*(\[.*?\])\s*```', raw, re.DOTALL)
-                if json_match:
-                    raw = json_match.group(1)
-                else:
-                    # 尝试直接提取 JSON 数组
-                    json_match = re.search(r'(\[.*\])', raw, re.DOTALL)
-                    if json_match:
-                        raw = json_match.group(1)
-                    else:
-                        # 尝试去除 markdown 代码块标记
-                        raw = re.sub(r'```\w*\n?', '', raw).strip()
-
-            beats = json.loads(raw)
-
-            # 处理 LLM 返回 {"beats": [...]} 格式
-            if isinstance(beats, dict) and "beats" in beats:
-                beats = beats["beats"]
-
-            if self.debug_mode:
-                print(f"[Director] 原始 beats 数量: {len(beats)}")
-                print(f"[Director] 原始响应前500字符: {raw[:500]}")
-                if beats:
-                    print(f"[Director] 第一个 beat 字段: {list(beats[0].keys()) if isinstance(beats[0], dict) else type(beats[0])}")
-            valid_beats = self._parse_beats(beats)
-            if self.debug_mode:
-                print(f"[Director] 解析后 beats 数量: {len(valid_beats)}")
-            valid_beats = self._validate_beat_plan(valid_beats)
-
-            if self.debug_mode:
-                print(f"\n[Director] 生成 BeatPlan ({len(valid_beats)} beats):")
-                for i, b in enumerate(valid_beats):
-                    addr = f" →{b['addressee']}" if b.get('addressee') else ""
-                    delta_str = f" delta={b['world_state_delta']}" if b.get('world_state_delta') else ""
-                    hint_str = f" hint=\"{b['state_change_hint']}\"" if b.get('state_change_hint') else ""
-                    print(f"  Beat {i+1}: [{b['speaker']}{addr}] {b['intent']} (urgency={b['urgency']}){delta_str}{hint_str}")
-
-            return valid_beats
-
-        except json.JSONDecodeError:
-            # JSON 解析失败，重试一次
-            if self.debug_mode:
-                print(f"[Director] JSON 解析失败，重试...")
+        for attempt in range(max_retries + 1):
             try:
+                is_retry = attempt > 0
+                retry_hint = "\n\n重要：只输出 JSON 数组，不要任何其他文字。" if is_retry else ""
                 messages = [
-                    {"role": "system", "content": system_msg + "\n\n重要：只输出 JSON 数组，不要任何其他文字。"},
+                    {"role": "system", "content": system_msg + retry_hint},
                     {"role": "user", "content": user_msg},
                 ]
                 raw = self.llm_client.chat_completion(messages, temperature=0.8, max_tokens=500)
                 raw = raw.strip()
-                
+
                 if self.debug_mode:
-                    print(f"[Director] 重试响应: {raw[:500]}...")
-                
+                    print(f"[Director] 尝试 {attempt + 1}: {raw[:200]}...")
+
                 import re
-                json_match = re.search(r'\[.*\]', raw, re.DOTALL)
-                if json_match:
-                    raw = json_match.group(0)
-                
+                # 尝试提取 JSON 数组
+                if "```" in raw:
+                    json_match = re.search(r'```json\s*(\[.*?\])\s*```', raw, re.DOTALL)
+                    if json_match:
+                        raw = json_match.group(1)
+                    else:
+                        json_match = re.search(r'(\[.*\])', raw, re.DOTALL)
+                        if json_match:
+                            raw = json_match.group(1)
+                        else:
+                            raw = re.sub(r'```\w*\n?', '', raw).strip()
+
                 beats = json.loads(raw)
+
+                # 处理 LLM 返回 {"beats": [...]} 格式
+                if isinstance(beats, dict) and "beats" in beats:
+                    beats = beats["beats"]
+
+                # 确保 beats 是列表
+                if not isinstance(beats, list):
+                    if isinstance(beats, dict):
+                        beats = [beats]
+                    else:
+                        beats = []
+
                 valid_beats = self._parse_beats(beats)
-                
+                valid_beats = self._validate_beat_plan(valid_beats, entity_locations)
+
                 if self.debug_mode:
-                    print(f"[Director] 解析后 beats: {len(valid_beats)}/{len(beats)}")
-                
-                valid_beats = self._validate_beat_plan(valid_beats)
+                    print(f"[Director] 尝试 {attempt + 1} 成功，生成 {len(valid_beats)} 个 beats")
+
                 return valid_beats
-            except Exception as retry_err:
+
+            except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
                 if self.debug_mode:
-                    print(f"[Director] 重试也失败（{retry_err}）")
-                raise
+                    print(f"[Director] 尝试 {attempt + 1} 失败（{e}）{'，已达到最大重试次数' if attempt >= max_retries else '，进行重试...'}")
+
+        # 所有尝试都失败，返回空列表
+        if self.debug_mode:
+            print(f"[Director] 所有尝试都失败，返回空列表")
+        return []
 
     def _parse_beats(self, beats: list) -> list:
         """解析 beats 列表"""
@@ -465,8 +475,9 @@ class DirectorAgent:
                 })
         return valid_beats
 
-    def _validate_beat_plan(self, beats: List[Dict]) -> List[Dict]:
-        """后处理校验 BeatPlan 质量"""
+    def _validate_beat_plan(self, beats: List[Dict], 
+                           entity_locations: Dict[str, str] = None) -> List[Dict]:
+        """后处理校验 BeatPlan 质量，并注入位置信息"""
         if not beats:
             return beats
 
@@ -537,7 +548,17 @@ class DirectorAgent:
                 "world_state_delta": {},
                 "state_change_hint": "",
             })
-
+        
+        # 【新增】为每个 beat 添加位置信息
+        if entity_locations:
+            for b in final:
+                speaker = b.get("speaker", "")
+                if speaker in ("trip", "grace"):
+                    # 角色位置
+                    char_loc = entity_locations.get(speaker)
+                    if char_loc:
+                        b["location"] = char_loc
+        
         return final
 
     def generate_transition_beat_plan(self,

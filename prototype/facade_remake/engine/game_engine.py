@@ -53,6 +53,7 @@ class GameEngine:
         self.condition_store = self.container.condition_store
         self.storylet_manager = self.container.storylet_manager
         self.landmark_manager = self.container.landmark_manager
+        self.location_manager = self.container.location_manager
 
         # 动态角色管理 - 支持任意数量的自定义角色
         self._character_agents: Dict[str, Any] = {}
@@ -185,13 +186,29 @@ class GameEngine:
         self.current_beat_plan = []
         self.beat_index = 0
 
+        # 【新增】获取位置信息用于传递给 Director
+        entity_locations = {}
+        all_locations = []
+        if self.location_manager:
+            entity_locations = self.location_manager.get_all_entity_locations()
+            # 添加玩家位置到 world_state
+            player_loc = self.location_manager.get_player_location()
+            # 复制 world_state 字典并添加 player_location
+            ws_dict = self.world_state.to_dict()
+            ws_dict["player_location"] = player_loc
+            all_locations = self.location_manager.get_all_locations()
+        else:
+            ws_dict = self.world_state.to_dict()
+
         try:
             beats = await self._loop.run_in_executor(
                 None,
                 lambda: self.director.generate_beat_plan(
                     self.current_storylet.content,
-                    self.world_state.to_dict(),
+                    ws_dict,
                     self.conversation_history,
+                    entity_locations,
+                    all_locations,
                 )
             )
             self.current_beat_plan = beats
@@ -747,3 +764,114 @@ class GameEngine:
         finally:
             if self.event_loop:
                 self.event_loop.notify_beat_done()
+
+    # ─── 位置管理 ──────────────────────────────────────────────────────────────
+
+    def handle_move_location(self, location_id: str) -> tuple[bool, str, Dict]:
+        """
+        处理玩家移动到指定位置
+        返回: (success, message, location_summary)
+        
+        副作用：
+        - 记录移动到 conversation_history（等同于沉默交互）
+        - 打断当前 BeatPlan 循环
+        - 触发重新生成 BeatPlan
+        """
+        if not self.location_manager:
+            return False, "位置管理器未初始化", {}
+
+        old_loc = self.location_manager.get_player_location()
+        old_loc_obj = self.location_manager.get_location(old_loc) if old_loc else None
+        new_loc_obj = self.location_manager.get_location(location_id)
+        
+        success, message = self.location_manager.move_player(location_id)
+        
+        if success and old_loc_obj and new_loc_obj:
+            # 1. 记录到对话历史（等同于沉默交互）
+            move_record = f"玩家: （移动）从 {old_loc_obj.label} 移动到了 {new_loc_obj.label}"
+            self.conversation_history.append(move_record)
+            
+            # 2. 推进回合计数（与 handle_player_silence 类似）
+            self.current_turn += 1
+            self.storylet_turn_count += 1
+            self.director.advance_turn()
+            self.landmark_manager.increment_turn_count()
+            
+            # 3. 打断当前 BeatPlan（取消 pending_beat_task）
+            if self.event_loop and self.event_loop.pending_beat_task:
+                if not self.event_loop.pending_beat_task.done():
+                    self.event_loop.pending_beat_task.cancel()
+            
+            # 4. 清空当前 BeatPlan，触发重新生成
+            self.current_beat_plan = []
+            self.beat_index = 0
+            
+            # 5. 检查是否需要切换 Storylet（基于位置触发）
+            storylet_changed = self._check_and_handle_transitions_by_location()
+            
+            # 6. 如果没有 Storylet 切换，刷新 BeatPlan
+            if not storylet_changed:
+                self.schedule_async(self._refresh_beat_plan())
+        
+        location_summary = self.location_manager.get_location_summary()
+        return success, message, location_summary
+
+    def _check_and_handle_transitions_by_location(self) -> bool:
+        """基于玩家位置变化检查是否需要切换 Storylet"""
+        if not self.current_storylet:
+            return False
+        
+        # 检查当前 Storylet 是否有位置约束
+        if self.current_storylet.location_requirements:
+            player_loc = self.location_manager.get_player_location()
+            reqs = self.current_storylet.location_requirements
+            
+            if "any_of" in reqs:
+                if player_loc not in reqs["any_of"]:
+                    # 玩家不在允许的位置，尝试切换
+                    new_storylet = self.story_selector.select(
+                        self.world_state, self.current_turn, 
+                        player_input=""  # 移动触发，无输入
+                    )
+                    if new_storylet and new_storylet.id != self.current_storylet.id:
+                        self._switch_to_storylet(new_storylet)
+                        return True
+            elif "all_of" in reqs:
+                # 需要所有指定位置都有角色在场（简化处理：检查玩家是否在其中）
+                required_locs = reqs["all_of"]
+                if player_loc not in required_locs:
+                    new_storylet = self.story_selector.select(
+                        self.world_state, self.current_turn, 
+                        player_input=""
+                    )
+                    if new_storylet and new_storylet.id != self.current_storylet.id:
+                        self._switch_to_storylet(new_storylet)
+                        return True
+        
+        return False
+
+    def get_location_info(self) -> Dict:
+        """获取位置信息（用于前端初始化）"""
+        if not self.location_manager:
+            return {}
+        return self.location_manager.get_location_summary()
+
+    def get_entities_at_current_location(self) -> Dict[str, List[str]]:
+        """获取当前玩家位置的所有可见实体"""
+        if not self.location_manager:
+            return {"characters": [], "props": []}
+        player_loc = self.location_manager.get_player_location()
+        if not player_loc:
+            return {"characters": [], "props": []}
+        return self.location_manager.get_entities_at_location(player_loc)
+
+    def can_interact_with(self, entity_id: str) -> bool:
+        """检查玩家是否可以与指定实体交互（是否在同一位置）"""
+        if not self.location_manager:
+            return True  # 如果没有位置管理器，允许交互
+        player_loc = self.location_manager.get_player_location()
+        entity_loc = self.location_manager.get_entity_location(entity_id)
+        # 如果实体没有固定位置（未在entity_locations中），假设可以被交互
+        if entity_loc is None:
+            return True
+        return player_loc == entity_loc

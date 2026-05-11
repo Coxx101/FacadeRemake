@@ -81,10 +81,11 @@ export default function PlayMode() {
   const isLoading = usePlayStore((s) => s.isLoading)
   const connected = usePlayStore((s) => s.connected)
   const connecting = usePlayStore((s) => s.connecting)
+  const backendReady = usePlayStore((s) => s.backendReady)
+  const sentInitScene = usePlayStore((s) => s.sentInitScene)
+  const setSentInitScene = usePlayStore((s) => s.setSentInitScene)
   const [connectionFailed, setConnectionFailed] = useState(false)
   
-  // 使用 ref 来跟踪是否已经发送过 init_scene
-  const sentRef = useRef(false)
   // 使用 ref 来跟踪组件是否已卸载（防止 StrictMode 双重渲染问题）
   const mountedRef = useRef(true)
   // 使用 ref 来跟踪是否已经开始连接（防止 StrictMode 创建多个连接）
@@ -108,13 +109,21 @@ export default function PlayMode() {
       isLoading: false,
       gameEnded: false,
       isPlayerTurn: false,
+      // 位置系统重置
+      locations: [],
+      playerLocation: '',
+      entityLocations: {},
+      characters: [],
+      props: [],
     })
-    sentRef.current = false
+    setSentInitScene(false)
     setConnectionFailed(false)
     
     // 强制创建新会话，确保每次进入 Play 模式都是全新的游戏
     const state = usePlayStore.getState()
-    console.log('[PlayMode] Current state - connected:', state.connected, 'connecting:', state.connecting)
+    console.log('[PlayMode] Current state - connected:', state.connected, 'connecting:', state.connecting, 'backendReady:', state.backendReady)
+    // 重要：重置 backendReady，确保等待新的 ready 信号
+    usePlayStore.setState({ backendReady: false })
     state.connect(true)  // 传入 true 强制新建会话
     
     // 设置连接超时检测
@@ -138,16 +147,16 @@ export default function PlayMode() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 连接就绪后发送场景数据（如果尚未发送）
+  // 后端 ready 后发送场景数据（等待后端准备好再发送）
   useEffect(() => {
-    console.log('[PlayMode] Connected changed:', connected, 'sentRef.current:', sentRef.current)
-    if (connected && !sentRef.current) {
-      sentRef.current = true
+    console.log('[PlayMode] Effect: backendReady:', backendReady, 'connected:', connected, 'sentInitScene:', sentInitScene)
+    if (backendReady && connected && !sentInitScene) {
+      setSentInitScene(true)
       setConnectionFailed(false)
-      console.log('[PlayMode] Sending init_scene...')
+      console.log('[PlayMode] Sending init_scene (backend ready)...')
       sendInitScene()
     }
-  }, [connected])
+  }, [backendReady]) // 主要依赖 backendReady 的变化
 
   // 连接失败时显示提示
   if (connectionFailed) {

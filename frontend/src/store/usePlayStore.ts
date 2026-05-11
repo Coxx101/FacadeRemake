@@ -107,7 +107,42 @@ interface WsLlmDebug {
   ts: number
 }
 
-type WsIncomingMessage = WsChatMessage | WsStateUpdate | WsErrorMessage | WsLlmDebug | WsPlayerTurn
+interface WsReadyMessage {
+  type: 'ready'
+  message?: string
+}
+
+// ── 位置和实体类型 ──────────────────────────────────────────────────────────
+export interface EntityLocation {
+  entityId: string
+  entityName: string
+  entityType: 'character' | 'prop' | 'narrator'
+}
+
+interface WsLocationUpdate {
+  type: 'location_update'
+  player_location: string
+  entity_locations: Record<string, string>  // entityId -> locationId
+}
+
+interface WsLocationInfo {
+  type: 'location_info'
+  locations: Array<{
+    id: string
+    label: string
+    adjacent: string[]
+  }>
+  player_location: string
+  entity_locations: Record<string, string>
+}
+
+interface WsBeatPlanRefresh {
+  type: 'beat_plan_refresh'
+  reason: 'player_moved' | 'auto_refresh'
+  message?: string
+}
+
+type WsIncomingMessage = WsChatMessage | WsStateUpdate | WsErrorMessage | WsLlmDebug | WsPlayerTurn | WsReadyMessage | WsLocationUpdate | WsLocationInfo | WsBeatPlanRefresh
 
 // ── Store 类型 ────────────────────────────────────────────────────────────────
 export interface PlayState {
@@ -124,9 +159,19 @@ export interface PlayState {
   gameEnded: boolean
   connected: boolean // WebSocket 连接状态
   connecting: boolean // WebSocket 正在连接中
+  backendReady: boolean // 后端已准备好接收 init_scene
+  sentInitScene: boolean // 是否已发送 init_scene
+  setSentInitScene: (v: boolean) => void
   debugLogs: LlmDebugEntry[]
   clearDebugLogs: () => void
   isPlayerTurn: boolean // 是否轮到玩家输入
+
+  // ── 位置系统 ──
+  locations: Array<{ id: string; label: string; adjacent: string[] }>
+  playerLocation: string  // 玩家当前位置
+  entityLocations: Record<string, string>  // 实体当前位置 { entityId: locationId }
+  characters: Array<{ id: string; name: string }>  // 当前场景的角色列表
+  props: Array<{ id: string; name: string }>  // 当前场景的物品列表
 
   // 回退栈
   _snapshotStack: PlaySnapshot[]
@@ -134,6 +179,7 @@ export interface PlayState {
   // ── 操作 ──
   initFromWSD: (wsd: WorldStateDefinition, firstLandmarkId: string) => void
   sendMessage: (text: string) => void
+  moveToLocation: (locationId: string) => void
   rollback: () => void
   resetGame: (wsd: WorldStateDefinition, firstLandmarkId: string) => void
   setQuality: (key: string, value: number) => void
@@ -400,12 +446,22 @@ export const usePlayStore = create<PlayState>()(
     gameEnded: false,
     connected: false,
     connecting: false,
+    backendReady: false, // 后端已准备好接收 init_scene
+    sentInitScene: false, // 是否已发送 init_scene
     _snapshotStack: [],
     debugLogs: [],
     isPlayerTurn: false,
 
+    // 位置系统初始状态
+    locations: [],
+    playerLocation: '',
+    entityLocations: {},
+    characters: [],
+    props: [],
+
     setDebugOpen: (open) => set((s) => { s.debugOpen = open }),
     clearDebugLogs: () => set((s) => { s.debugLogs = [] }),
+    setSentInitScene: (v) => set((s) => { s.sentInitScene = v }),
 
     initFromWSD: (_wsd, _firstLandmarkId) => {
       get().connect()
@@ -436,7 +492,7 @@ export const usePlayStore = create<PlayState>()(
 
     disconnect: () => {
       closeWs()
-      set((s) => { s.connected = false; s.connecting = false })
+      set((s) => { s.connected = false; s.connecting = false; s.backendReady = false })
     },
 
     _sendWs: (data) => {
@@ -526,6 +582,43 @@ export const usePlayStore = create<PlayState>()(
             s.debugLogs = s.debugLogs.slice(-200)
           }
         })
+      } else if (data.type === 'ready') {
+        console.log('[WS] ✅ Backend ready signal received')
+        set((s) => {
+          s.backendReady = true
+        })
+      } else if (data.type === 'location_update') {
+        console.log('[WS] 📍 Location update received')
+        set((s) => {
+          if ((data as WsLocationUpdate).player_location) {
+            s.playerLocation = (data as WsLocationUpdate).player_location
+          }
+          if ((data as WsLocationUpdate).entity_locations) {
+            s.entityLocations = { ...(data as WsLocationUpdate).entity_locations }
+          }
+        })
+      } else if (data.type === 'location_info') {
+        console.log('[WS] 📍 Location info received')
+        const locInfo = data as WsLocationInfo
+        set((s) => {
+          s.locations = locInfo.locations || []
+          s.playerLocation = locInfo.player_location || ''
+          s.entityLocations = locInfo.entity_locations || {}
+          // 更新角色列表
+          if ((data as any).characters) {
+            s.characters = (data as any).characters
+          }
+          // 更新物品列表
+          if ((data as any).props) {
+            s.props = (data as any).props
+          }
+        })
+      } else if (data.type === 'beat_plan_refresh') {
+        console.log('[WS] 🔄 Beat plan refresh triggered:', (data as WsBeatPlanRefresh).reason)
+        // 设置 loading 状态，让 UI 显示正在生成中
+        set((s) => {
+          s.isLoading = true
+        })
       }
     },
 
@@ -560,6 +653,14 @@ export const usePlayStore = create<PlayState>()(
       get()._sendWs({ type: 'player_input', text })
     },
 
+    moveToLocation: (locationId) => {
+      const s = get()
+      if (s.isLoading || s.gameEnded) return
+
+      console.log('[PlayStore] Moving to location:', locationId)
+      get()._sendWs({ type: 'move_location', location_id: locationId })
+    },
+
     rollback: () => {
       set((s) => {
         if (s._snapshotStack.length === 0) return
@@ -584,8 +685,12 @@ export const usePlayStore = create<PlayState>()(
         s._snapshotStack = []
         s.isLoading = false
         s.gameEnded = false
+        s.backendReady = false // 重置 backendReady
+        s.sentInitScene = false // 重置 sentInitScene
       })
-      sendInitScene()
+      // 重连会触发后端发送新的 ready 信号
+      get().disconnect()
+      setTimeout(() => get().connect(true), 100)
     },
 
     setQuality: (key, value) => {

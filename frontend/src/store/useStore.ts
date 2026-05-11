@@ -542,7 +542,10 @@ export const useStore = create<StoreState>()(
         if (actionLibrary) s.actionLibrary = actionLibrary
         if (expressionLibrary) s.expressionLibrary = expressionLibrary
         if (propLibrary) s.propLibrary = propLibrary
-        if (locationLibrary) s.locationLibrary = locationLibrary
+        // 只有 locationLibrary 有数据时才覆盖，保持编辑器中的数据不变
+        if (locationLibrary && locationLibrary.length > 0) {
+          s.locationLibrary = locationLibrary
+        }
         s.isDirty = false
         s.selectedLandmarkId = null
         s.selectedLandmarkIds = []

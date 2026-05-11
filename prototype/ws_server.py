@@ -270,6 +270,8 @@ class GameSession:
                 self._loop.create_task(self.event_loop.start())
 
             messages.append(self._get_state_snapshot())
+            # 同时发送位置信息
+            messages.append(self._get_location_snapshot())
             return messages
 
         except Exception as e:
@@ -333,10 +335,40 @@ class GameSession:
             "game_ended": self.engine.game_ended,
         }
 
+    def _get_location_snapshot(self) -> Dict[str, Any]:
+        """获取位置快照"""
+        if not self.engine or not self.engine.location_manager:
+            return {
+                "type": "location_info",
+                "locations": [],
+                "player_location": "",
+                "entity_locations": {},
+            }
+
+        location_summary = self.engine.location_manager.get_location_summary()
+
+        # 获取角色列表（用于前端显示）
+        characters = []
+        if self.engine and self.engine._character_agents:
+            for char_id in self.engine._character_agents.keys():
+                # 尝试从配置获取角色名称
+                char_name = char_id.split("_", 1)[-1].replace("_", " ").title()
+                characters.append({"id": char_id, "name": char_name})
+
+        return {
+            "type": "location_info",
+            "locations": location_summary.get("locations", []),
+            "player_location": location_summary.get("player_location", ""),
+            "entity_locations": location_summary.get("entity_locations", {}),
+            "characters": characters,
+        }
+
     def send_state_update(self):
         """发送状态更新"""
         try:
             self.ws.send_json(self._get_state_snapshot())
+            # 同时发送位置更新
+            self.ws.send_json(self._get_location_snapshot())
         except Exception as e:
             print(f"[send_state_update] 失败: {e}")
 
@@ -349,6 +381,57 @@ class GameSession:
             )
         except Exception as e:
             print(f"[send_message] 失败: {e}")
+
+    def send_location_info(self):
+        """发送位置信息给客户端"""
+        if not self.engine:
+            return
+        try:
+            location_info = self.engine.get_location_info()
+            message = {
+                "type": "location_info",
+                **location_info
+            }
+            self.ws.send_json(message)
+        except Exception as e:
+            print(f"[send_location_info] 失败: {e}")
+
+    def handle_move_location(self, location_id: str):
+        """处理玩家移动请求"""
+        if not self.engine:
+            print("[Error] Engine 未初始化")
+            return
+
+        try:
+            success, message, location_summary = self.engine.handle_move_location(location_id)
+            print(f"[MoveLocation] {message} (success={success})")
+
+            # 发送位置更新给客户端
+            self.ws.send_json({
+                "type": "location_update",
+                "player_location": location_summary.get("player_location", ""),
+                "entity_locations": location_summary.get("entity_locations", {}),
+            })
+
+            # 如果移动成功，发送旁白描述和 BeatPlan 刷新信号
+            if success:
+                self.ws.send_json({
+                    "type": "chat",
+                    "role": "narrator",
+                    "speech": message,
+                })
+                
+                # 发送 BeatPlan 刷新信号（前端可选择显示"重新生成中..."）
+                self.ws.send_json({
+                    "type": "beat_plan_refresh",
+                    "reason": "player_moved",
+                    "message": message,
+                })
+
+        except Exception as e:
+            print(f"[MoveLocation] 处理失败: {e}")
+            import traceback
+            traceback.print_exc()
 
     async def run(self):
         """运行游戏会话"""
@@ -365,6 +448,10 @@ class GameSession:
                 })
                 await self.ws.close()
                 return
+
+            # 发送 ready 消息，告知前端后端已准备好接收 init_scene
+            print("[WS] 发送 ready 信号给前端")
+            await self.ws.send_json({"type": "ready", "message": "后端已准备好，请发送 init_scene"})
 
             while True:
                 data = await self.ws.receive_json()
@@ -399,6 +486,11 @@ class GameSession:
                 elif message_type == "player_silence":
                     print("[WS] 收到玩家沉默")
                     self.handle_player_silence()
+
+                elif message_type == "move_location":
+                    location_id = data.get("location_id", "")
+                    print(f"[WS] 收到移动请求: {location_id}")
+                    self.handle_move_location(location_id)
 
                 elif message_type == "disconnect":
                     print("[WS] 客户端请求断开")

@@ -29,6 +29,7 @@ class DIContainer:
         self._character_agents: Dict[str, Any] = {}
         self._storylet_manager = None
         self._landmark_manager = None
+        self._location_manager = None
         self._state_manager = None
         self._logger = None
 
@@ -77,6 +78,13 @@ class DIContainer:
             from core.landmark import LandmarkManager
             self._landmark_manager = LandmarkManager(llm_client=self.llm_client)
         return self._landmark_manager
+
+    @property
+    def location_manager(self):
+        if self._location_manager is None:
+            from core.location_manager import LocationManager
+            self._location_manager = LocationManager()
+        return self._location_manager
 
     @property
     def story_selector(self):
@@ -245,14 +253,21 @@ class DIContainer:
         self._expression_library = scene_data.get('expression_library', [])
         self._prop_library = scene_data.get('prop_library', [])
         self._location_library = scene_data.get('location_library', [])
+
+        # 初始化位置管理器
+        self._init_location_manager(scene_data)
+        
+        # 获取角色数据（需要在初始化位置前先获取）
+        characters = scene_data.get('characters', [])
+        
+        # 将角色放置在初始位置
+        self._init_entity_locations(characters)
         
         # 动态创建角色 Agent（支持任意数量的自定义角色）
         from agents.character_agent import CharacterAgent
         
         # 先清除旧角色
         self.clear_characters()
-        
-        characters = scene_data.get('characters', [])
         for char in characters:
             char_id = char.get('id')
             if char_id:
@@ -264,3 +279,28 @@ class DIContainer:
         self._director = None
         self._input_parser = None
         self._story_selector = None
+
+    def _init_location_manager(self, scene_data: Dict) -> None:
+        """初始化位置管理器"""
+        # 加载地点数据
+        locations = scene_data.get('location_library', [])
+        if locations:
+            self.location_manager.load_from_dicts(locations)
+            # 初始化玩家位置为第一个地点
+            self.location_manager.initialize_player_location()
+        else:
+            # 如果没有地点库，创建一个默认地点
+            self.location_manager.load_from_dicts([
+                {"id": "default", "label": "默认地点", "adjacent": []}
+            ])
+            self.location_manager.initialize_player_location("default")
+
+    def _init_entity_locations(self, characters: List[Dict]) -> None:
+        """初始化实体位置"""
+        # 将所有角色放置在玩家初始位置
+        player_loc = self.location_manager.get_player_location()
+        if player_loc:
+            for char in characters:
+                char_id = char.get('id')
+                if char_id:
+                    self.location_manager.set_entity_location(char_id, player_loc)

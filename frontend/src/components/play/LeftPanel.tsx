@@ -1,10 +1,11 @@
 /**
  * LeftPanel — 左栏组件（白底风格）
- * 包含：实时时钟、场景位置、世界状态
+ * 包含：实时时钟、场景位置（LocationPanel）、世界状态
  */
 import { useState, useEffect } from 'react'
 import { usePlayStore } from '../../store/usePlayStore'
 import { useStore } from '../../store/useStore'
+import LocationPanel from './LocationPanel'
 
 // ── 实时时钟组件 ────────────────────────────────────────────────────────────────
 function LiveClock() {
@@ -185,8 +186,8 @@ export default function LeftPanel() {
       {/* 实时时钟 */}
       <LiveClock />
 
-      {/* 场景位置 */}
-      <div style={{ padding: '12px 14px' }}>
+      {/* 场景位置 - 叙事阶段 */}
+      <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)' }}>
         {/* Panel Header */}
         <div style={{
           background: 'var(--text)', color: 'var(--bg-panel)',
@@ -194,9 +195,9 @@ export default function LeftPanel() {
           letterSpacing: '0.1em', textTransform: 'uppercase',
           marginBottom: '10px',
         }}>
-          LOCATIONS
+          SCENE
         </div>
-        
+
         {/* 当前场景 */}
         <div style={{ fontSize: '14px', color: 'var(--text)', fontWeight: 500 }}>
           {currentLandmark?.title || '—'}
@@ -218,6 +219,9 @@ export default function LeftPanel() {
           </div>
         )}
       </div>
+
+      {/* 位置面板 - RPG地点系统 */}
+      <LocationPanel />
 
       {/* 世界状态 */}
       <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', flex: 1, overflowY: 'auto' }}>
