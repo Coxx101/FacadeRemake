@@ -215,28 +215,20 @@ export default function StartScreen({ onEnterProject }: StartScreenProps) {
   return (
     <div style={{
       height: '100vh', display: 'flex', flexDirection: 'column',
-      background: 'var(--bg-primary)', overflow: 'hidden',
+      background: '#C0C0C0', overflow: 'hidden',
     }}>
-      {/* ── 顶部品牌栏 ── */}
-      <header style={{
-        height: '64px', flexShrink: 0,
-        display: 'flex', alignItems: 'center', padding: '0 32px',
-        borderBottom: '1px solid var(--border-default)',
-        background: 'var(--bg-secondary)',
+      {/* 品牌栏 — 90s title bar */}
+      <header className="title-bar" style={{
+        height: '60px',
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'flex-start',
+        padding: '0 12px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <LayoutDashboard size={22} color="var(--accent-blue)" strokeWidth={2.2} />
-          <span style={{
-            color: 'var(--text-primary)', fontWeight: 700,
-            fontSize: '18px', letterSpacing: '-0.02em',
-          }}>
-            Facade<span style={{ color: 'var(--accent-blue)' }}>Studio</span>
-          </span>
-        </div>
-        <span style={{
-          marginLeft: '16px', color: 'var(--text-muted)',
-          fontSize: '12px', fontWeight: 500,
-        }}>
+        <LayoutDashboard size={18} color="#ffffff" strokeWidth={2.2} />
+        <span style={{ color: '#fff', fontWeight: 700 }}>
+          Facade<span style={{ color: '#FFFF00' }}>Studio</span>
+        </span>
+        <span style={{ marginLeft: '12px', color: '#fff', fontSize: '13px', fontFamily: '"Courier New",monospace', opacity: 0.8 }}>
           交互叙事编辑器
         </span>
       </header>
@@ -441,21 +433,19 @@ function ActionButton({
   onClick: () => void
 }) {
   return (
-    <button onClick={onClick} style={{
+    <button onClick={onClick} className="bevel-out" style={{
       display: 'flex', alignItems: 'center', gap: '8px',
-      padding: '10px 20px', borderRadius: '10px',
-      background: 'rgba(255,255,255,0.04)',
-      border: `1px solid ${color}40`,
-      color, fontSize: '14px', fontWeight: 600,
-      cursor: 'pointer', transition: 'all 0.15s',
+      padding: '8px 18px',
+      background: '#C0C0C0',
+      color, fontSize: '13px', fontWeight: 600,
+      cursor: 'pointer',
+      fontFamily: '"MS Sans Serif", sans-serif',
     }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = `${color}15`
-        e.currentTarget.style.borderColor = `${color}80`
+        e.currentTarget.style.background = '#d4d0cc'
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
-        e.currentTarget.style.borderColor = `${color}40`
+        e.currentTarget.style.background = '#C0C0C0'
       }}
     >
       {icon}
@@ -494,22 +484,12 @@ function ProjectCard({
   return (
     <div
       onClick={handleCardClick}
+      className="bevel-out"
       style={{
         background: 'var(--bg-card)',
-        border: '1px solid var(--border-default)',
-        borderRadius: '10px',
-        padding: '20px',
+        padding: '16px',
         cursor: 'pointer',
-        transition: 'border-color 0.15s, box-shadow 0.15s',
         position: 'relative',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'var(--accent-blue)'
-        e.currentTarget.style.boxShadow = '0 4px 24px rgba(79,110,247,0.1)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--border-default)'
-        e.currentTarget.style.boxShadow = 'none'
       }}
     >
       {/* 顶部：名称 + 更多按钮 */}
@@ -599,10 +579,8 @@ function ProjectCard({
 
 function StatBadge({ label }: { label: string }) {
   return (
-    <span style={{
-      background: 'rgba(255,255,255,0.04)',
-      border: '1px solid var(--border-default)',
-      borderRadius: '4px', padding: '2px 8px',
+    <span className="bevel-out" style={{
+      padding: '2px 8px',
       color: 'var(--text-secondary)', fontSize: '11px', fontWeight: 500,
     }}>
       {label}
@@ -621,16 +599,17 @@ function MiniButton({
   return (
     <button
       onClick={onClick}
+      className="bevel-out"
       style={{
         display: 'flex', alignItems: 'center', gap: '4px',
-        padding: '4px 10px', borderRadius: '6px',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid var(--border-default)',
+        padding: '3px 8px',
+        background: '#C0C0C0',
         color, fontSize: '11px', fontWeight: 600,
-        cursor: 'pointer', transition: 'all 0.15s',
+        cursor: 'pointer',
+        fontFamily: '"MS Sans Serif", sans-serif',
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = '#d4d0cc' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = '#C0C0C0' }}
     >
       {icon}
       {label}
@@ -645,14 +624,12 @@ function DropdownMenu({
   onClose: () => void
 }) {
   return (
-    <div
+    <div className="bevel-out"
       style={{
         position: 'absolute', top: '36px', right: 0,
-        background: 'var(--bg-secondary)',
-        border: '1px solid var(--border-default)',
-        borderRadius: '8px', padding: '4px',
+        background: '#C0C0C0',
+        padding: '4px',
         minWidth: '120px', zIndex: 100,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
         animation: 'fadeIn 0.1s ease-out',
       }}
     >
@@ -682,14 +659,15 @@ function DropdownItem({
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: '8px',
-        width: '100%', padding: '6px 10px',
-        background: 'transparent', border: 'none',
-        borderRadius: '5px', color,
+        width: '100%', padding: '5px 10px',
+        background: '#C0C0C0', border: 'none',
+        color,
         fontSize: '12px', fontWeight: 500, cursor: 'pointer',
         textAlign: 'left',
+        fontFamily: '"MS Sans Serif", sans-serif',
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = '#d4d0cc' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = '#C0C0C0' }}
     >
       {icon}
       {label}
@@ -721,21 +699,21 @@ function ModalOverlay({
 
 function EmptyState() {
   return (
-    <div style={{
+    <div className="bevel-out" style={{
       textAlign: 'center', padding: '60px 20px',
-      border: '2px dashed var(--border-default)',
-      borderRadius: '12px', maxWidth: '480px',
+      maxWidth: '480px',
       margin: '0 auto',
+      background: '#C0C0C0',
     }}>
-      <FileText size={40} color="var(--text-muted)" style={{ marginBottom: '16px', opacity: 0.5 }} />
+      <FileText size={40} color="#808080" style={{ marginBottom: '16px', opacity: 0.5 }} />
       <h3 style={{
-        color: 'var(--text-secondary)', fontSize: '16px',
+        color: '#000', fontSize: '16px',
         fontWeight: 600, marginBottom: '8px',
       }}>
         还没有项目
       </h3>
       <p style={{
-        color: 'var(--text-muted)', fontSize: '13px',
+        color: '#444', fontSize: '13px',
         lineHeight: 1.5,
       }}>
         点击上方的「新建项目」按钮创建你的第一个交互叙事世界，

@@ -56,37 +56,31 @@ export default function StoryletModal() {
       onClick={(e) => { if (e.target === e.currentTarget) closeModal() }}
     >
       <div
-        className="fade-in"
+        className="fade-in bevel-out"
         style={{
           width: '720px', maxHeight: '85vh',
-          background: '#1a1d27', border: '1px solid #2e3250',
-          borderRadius: '12px', overflow: 'hidden',
+          background: '#C0C0C0',
+          overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
         }}
       >
         {/* 头部 */}
-        <div style={{
-          padding: '16px 20px', background: '#1e2130',
-          borderBottom: '1px solid #2e3250',
+        <div className="panel-header" style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '4px 10px',
         }}>
           <div>
-            <div style={{ color: '#4a5070', fontSize: '11px', fontFamily: 'monospace' }}>
+            <div style={{ color: '#fff', fontSize: '11px', fontFamily: '"Courier New",monospace', opacity: 0.8 }}>
               Storylet
             </div>
-            <div style={{ color: '#e8eaf0', fontWeight: 700, fontSize: '16px' }}>
+            <div style={{ color: '#fff', fontWeight: 700, fontSize: '14px' }}>
               {form.title || form.id}
             </div>
           </div>
           <button
             onClick={closeModal}
-            style={{
-              width: '32px', height: '32px', background: 'rgba(255,255,255,0.05)',
-              border: '1px solid #2e3250', borderRadius: '8px',
-              color: '#8891b0', fontSize: '18px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
+            className="title-bar-btn"
+            style={{ width: '18px', height: '16px', fontSize: '10px' }}
           >×</button>
         </div>
 
@@ -94,18 +88,18 @@ export default function StoryletModal() {
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           {/* 左侧 Tab 列 */}
           <div style={{
-            width: '120px', flexShrink: 0, borderRight: '1px solid #2e3250',
-            background: '#131828', padding: '8px 0',
+            width: '110px', flexShrink: 0, borderRight: '2px solid #808080',
+            background: '#d0d0d0', padding: '4px 0',
           }}>
             {TABS.map(({ key, icon, label }) => (
               <button
                 key={key}
                 onClick={() => setTab(key)}
                 style={{
-                  width: '100%', padding: '10px 14px',
-                  background: tab === key ? '#1e2a4a' : 'none',
-                  border: 'none', borderLeft: `2px solid ${tab === key ? '#4f6ef7' : 'transparent'}`,
-                  color: tab === key ? '#4f6ef7' : '#8891b0',
+                  width: '100%', padding: '6px 10px',
+                  background: tab === key ? '#000080' : 'transparent',
+                  border: 'none',
+                  color: tab === key ? '#fff' : '#000',
                   fontSize: '12px', fontWeight: tab === key ? 600 : 400,
                   cursor: 'pointer', display: 'flex', alignItems: 'center',
                   gap: '8px', textAlign: 'left',

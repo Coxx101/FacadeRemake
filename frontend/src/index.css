@@ -1,67 +1,69 @@
-/* ── 字体引入 ── */
-@import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
+/* ── 90s Retro Theme for FacadeRemake ─────────────────────── */
+/* Reference: E:/FacadeRemake/References/mockup-retro90s.html      */
 
+@import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
 @import "tailwindcss";
 
-/* ── Tailwind v4 @theme 扩展 ── */
+/* ── Tailwind v4 @theme 扩展（Design 模式 90s 深色）────────── */
 @theme {
-  --color-bg-primary: #0f1117;
-  --color-bg-secondary: #1a1d27;
-  --color-bg-card: #1e2130;
-  --color-bg-hover: #252840;
-  --color-bg-input: #131828;
-  --color-border-default: #2e3250;
-  --color-border-active: #4f6ef7;
-  --color-text-primary: #e8eaf0;
-  --color-text-secondary: #8891b0;
-  --color-text-muted: #4a5070;
-  --color-accent-blue: #4f6ef7;
-  --color-accent-gold: #f5a623;
-  --color-accent-green: #2ecc71;
-  --color-accent-red: #e74c3c;
-  --color-accent-yellow: #f1c40f;
-  --color-accent-orange: #e67e22;
+  --color-bg-primary:    #C0C0C0;
+  --color-bg-secondary:  #C0C0C0;
+  --color-bg-card:       #C0C0C0;
+  --color-bg-hover:      #d4d0cc;
+  --color-bg-input:      #ffffff;
+  --color-border-default: #808080;
+  --color-border-active:  #000080;
+  --color-text-primary:   #000000;
+  --color-text-secondary:#444444;
+  --color-text-muted:     #808080;
+  --color-accent-blue:   #0000FF;
+  --color-accent-gold:   #FF0000;
+  --color-accent-green:  #00AA00;
+  --color-accent-red:    #FF0000;
+  --color-accent-yellow: #FFFF00;
+  --color-accent-orange: #FF8000;
 }
 
-/* ── FacadeRemake Day Mode Theme ── */
+/* ── FacadeRemake Day Mode Theme (Play 模式 90s 浅色）────────── */
 :root {
-  --bg-page:        #f5f4f0;
-  --bg-panel:       #ffffff;
-  --bg-surface:     #f0ede8;
-  --bg-stage:       #e8e4dd;
+  --bg-page:        #C0C0C0;
+  --bg-panel:       #C0C0C0;
+  --bg-surface:     #d8d4cf;
+  --bg-stage:       #C0C0C0;
   --bg-input:       #ffffff;
-  --border:         #d4cec5;
-  --border-light:   #ece9e4;
-  --text:           #1a1814;
-  --text-muted:     #6b655c;
-  --text-dim:       #9e9690;
+  --border:         #808080;
+  --border-light:   #ffffff;
+  --text:           #000000;
+  --text-muted:     #444444;
+  --text-dim:       #808080;
   --trip-color:     #c0392b;
-  --grace-color:    #2563a8;
-  --player-color:   #1a6b40;
-  --narrator-color: #6b5c3e;
-  --accent:         #4a6fa5;
-  --accent-hover:   #3a5f95;
-  --good:           #218a45;
+  --grace-color:    #000080;
+  --player-color:   #006600;
+  --narrator-color: #4a3000;
+  --accent:         #0000FF;
+  --accent-hover:   #000080;
+  --good:           #00AA00;
   --warn:           #b8860b;
-  --danger:         #c0392b;
-  --storylet-tag:   #7b3fa0;
-  --landmark-tag:   #2563a8;
-  --shadow-sm:      0 1px 3px rgba(0,0,0,0.08);
-  --shadow-md:      0 2px 8px rgba(0,0,0,0.12);
-  
-  /* 深色主题兼容变量 */
-  --bg-primary: #0f1117;
-  --bg-secondary: #1a1d27;
-  --bg-card: #1e2130;
-  --bg-hover: #252840;
-  --border-default: #2e3250;
-  --border-active: #4f6ef7;
-  --text-primary: #e8eaf0;
-  --text-secondary: #8891b0;
-  --accent-blue: #4f6ef7;
-  --accent-gold: #f5a623;
-  --accent-green: #2ecc71;
-  --accent-red: #e74c3c;
+  --danger:         #FF0000;
+  --storylet-tag:   #800080;
+  --landmark-tag:   #000080;
+  --titlebar-start: #000080;
+  --titlebar-end:   #1084D0;
+  --panel-yellow:   #FFFFCC;
+
+  /* 深色主题兼容变量（Design 模式） */
+  --bg-primary: #C0C0C0;
+  --bg-secondary: #C0C0C0;
+  --bg-card:      #C0C0C0;
+  --bg-hover:     #d4d0cc;
+  --border-default: #808080;
+  --border-active:  #000080;
+  --text-primary:  #000000;
+  --text-secondary:#444444;
+  --accent-blue:  #0000FF;
+  --accent-gold:  #FF0000;
+  --accent-green: #00AA00;
+  --accent-red:   #FF0000;
 }
 
 * {
@@ -71,15 +73,20 @@
 }
 
 body {
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  background-color: #C0C0C0;
+  background-image:
+    linear-gradient(45deg, #b8b8b8 25%, transparent 25%),
+    linear-gradient(-45deg, #b8b8b8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #b8b8b8 75%),
+    linear-gradient(-45deg, transparent 75%, #b8b8b8 75%);
+  background-size: 4px 4px;
+  background-position: 0 0, 0 2px, 2px -2px, -2px 0px;
+  font-family: "MS Sans Serif", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-size: 14px;
   line-height: 1.5;
+  color: #000;
   overflow: hidden;
   height: 100vh;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
@@ -88,97 +95,186 @@ body {
   flex-direction: column;
 }
 
-/* ── 全局表单元素样式 ── */
+/* ── 全局表单元素样式 ───────────────────────────────────── */
 input,
 textarea,
 select {
   font-family: inherit;
-  color: var(--text-primary);
+  color: #000;
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--text-muted);
+  color: #808080;
 }
 
 input:focus,
 textarea:focus,
 select:focus {
   outline: none;
-  border-color: var(--accent-blue) !important;
-  box-shadow: 0 0 0 2px rgba(79, 110, 247, 0.25);
+  border-color: #000080 !important;
+  box-shadow: 0 0 0 2px rgba(0,0,128,0.3);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 /* 聚焦可见性 — 可访问性 */
 :focus-visible {
-  outline: 2px solid var(--accent-blue);
+  outline: 2px solid #0000FF;
   outline-offset: 2px;
 }
 
 button:focus-visible {
-  outline: 2px solid var(--accent-blue);
+  outline: 2px dotted #000;
   outline-offset: 2px;
 }
 
-/* ── React Flow 深色主题覆盖 ── */
+/* ── 3D BEVEL EFFECTS ─────────────────────────────────── */
+.bevel-out {
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+}
+.bevel-in {
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040, inset -1px -1px 0 #dfdfdf;
+}
+
+/* ── React Flow 90s 主题覆盖 ─────────────────────────── */
 .react-flow__background {
-  background-color: var(--bg-primary);
+  background-color: #C0C0C0 !important;
+  background-image:
+    linear-gradient(45deg, #b8b8b8 25%, transparent 25%),
+    linear-gradient(-45deg, #b8b8b8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #b8b8b8 75%),
+    linear-gradient(-45deg, transparent 75%, #b8b8b8 75%);
+  background-size: 4px 4px;
 }
 
 .react-flow__minimap {
-  background-color: var(--bg-secondary) !important;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
+  background-color: #C0C0C0 !important;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  border-radius: 0 !important;
 }
 
 .react-flow__controls {
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  box-shadow: none;
+  background-color: #C0C0C0 !important;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  border-radius: 0 !important;
+  overflow: hidden;
 }
 
 .react-flow__controls-button {
-  background-color: var(--bg-secondary) !important;
-  border-bottom: 1px solid var(--border-default) !important;
-  fill: var(--text-secondary) !important;
+  background-color: #C0C0C0 !important;
+  border-bottom: 1px solid #808080 !important;
+  fill: #444444 !important;
+  width: 24px;
+  height: 24px;
 }
-
 .react-flow__controls-button:hover {
-  background-color: var(--bg-hover) !important;
+  background-color: #d4d0cc !important;
 }
 
-/* ── Scrollbar ── */
+.react-flow__edge-path {
+  stroke: #808080;
+  stroke-width: 2;
+}
+
+.react-flow__edge-text {
+  fill: #000000;
+  font-size: 10px;
+  font-family: "MS Sans Serif", sans-serif;
+}
+
+.react-flow__node {
+  border-radius: 0 !important;
+}
+
+/* ── 90s SCROLLBAR ───────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 16px;
+  height: 16px;
 }
+
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #C0C0C0;
+  border: 1px solid #808080;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
+  background: #C0C0C0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+
+::-webkit-scrollbar-button {
+  background: #C0C0C0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+::-webkit-scrollbar-button:horizontal:decrement,
+::-webkit-scrollbar-button:horizontal:increment,
+::-webkit-scrollbar-button:vertical:decrement,
+::-webkit-scrollbar-button:vertical:increment {
+  background: #C0C0C0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
 }
 
 * {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) var(--bg-surface);
+  scrollbar-width: auto;
+  scrollbar-color: #808080 #C0C0C0;
 }
 
-/* ── Play 模式动画 ── */
+/* ── KEYFRAME ANIMATIONS ─────────────────────────── */
+@keyframes rainbow {
+  0%   { color: #FF0000; }
+  14%  { color: #FF8000; }
+  28%  { color: #FFFF00; }
+  42%  { color: #00FF00; }
+  56%  { color: #00FFFF; }
+  70%  { color: #0080FF; }
+  84%  { color: #8000FF; }
+  100% { color: #FF0000; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,0,0,0.7); }
+  50%       { transform: scale(1.05); box-shadow: 0 0 10px 2px rgba(255,0,0,0.5); }
+}
+
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes marquee {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
 @keyframes typingBounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
-  30%           { transform: translateY(-4px); opacity: 0.8; }
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%           { transform: translateY(-4px); opacity: 1; }
 }
 
 @keyframes speakingPulse {
   0%, 100% { transform: scale(1); opacity: 0.8; }
-  50%      { transform: scale(1.4); opacity: 1; }
+  50%       { transform: scale(1.5); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes fadeSlideIn {
@@ -186,22 +282,18 @@ button:focus-visible {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Play 模式按钮 hover 过渡（仅做 transition 基础） ── */
+@media (prefers-reduced-motion: reduce) {
+  .rainbow-text { animation: none !important; color: #FF0000 !important; }
+  .pulse-badge { animation: none !important; }
+  .marquee-inner { animation: none !important; }
+}
+
+/* ── Play 模式动画 ─────────────────────────────────── */
 [data-play-mode] button:not(:disabled) {
   transition: background-color 0.15s, color 0.15s, opacity 0.15s;
 }
 
-/* ── Custom animations ── */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes slideIn {
-  from { opacity: 0; transform: translateX(8px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-
+/* ── 自定义动画类 ───────────────────────────────────── */
 .fade-in {
   animation: fadeIn 0.15s ease-out;
 }
@@ -210,8 +302,332 @@ button:focus-visible {
   animation: slideIn 0.2s ease-out;
 }
 
-/* ── 选择文本色 ── */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── MARQUEE BAR ─────────────────────────────────── */
+.marquee-bar {
+  background: #000080;
+  color: #ffffff;
+  padding: 3px 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  border-top: 1px solid #808080;
+  border-bottom: 1px solid #808080;
+}
+
+.marquee-inner {
+  white-space: nowrap;
+  animation: marquee 18s linear infinite;
+  display: inline-block;
+  font-size: 12px;
+  font-family: "Courier New", monospace;
+}
+
+.marquee-inner span {
+  margin-right: 60px;
+}
+
+/* ── CONSTRUCTION STRIPE ─────────────────────────── */
+.construction-bar {
+  background: repeating-linear-gradient(
+    45deg, #FFFF00, #FFFF00 8px, #000000 8px, #000000 16px
+  );
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* ── GROOVE HR ───────────────────────────────────── */
+.hr-groove {
+  border: none;
+  margin: 0;
+  height: 4px;
+  background: linear-gradient(
+    to bottom, #808080 0%, #808080 50%, #ffffff 50%, #ffffff 100%
+  );
+  flex-shrink: 0;
+}
+
+/* ── TITLE BAR ───────────────────────────────────── */
+.title-bar {
+  background: linear-gradient(to right, #000080, #1084D0);
+  color: #ffffff;
+  padding: 3px 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+  letter-spacing: 0.05em;
+}
+
+.title-bar-btns {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+}
+
+.title-bar-btn {
+  width: 16px;
+  height: 14px;
+  background: #C0C0C0;
+  border: 1px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 900;
+  color: #000;
+  cursor: pointer;
+  font-family: "Marlett", sans-serif;
+}
+
+/* ── WINDOW CHROME (mockup) ──────────────────── */
+.app-wrapper {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+.win-icon {
+  width: 16px; height: 16px;
+  background: #FF0000;
+  border: 1px solid #ffffff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 900; color: #fff;
+}
+.new-badge {
+  background: #FF0000; color: #FFFF00;
+  font-size: 9px; padding: 1px 5px;
+  font-family: "Arial Black", sans-serif;
+  letter-spacing: 0.08em;
+}
+.pulse-badge {
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+.status-bar {
+  height: 22px; background: #C0C0C0;
+  border-top: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  display: flex; align-items: center;
+  padding: 0 8px; gap: 12px;
+  font-size: 11px; font-family: "Courier New", monospace;
+  flex-shrink: 0;
+}
+.status-cell {
+  display: flex; align-items: center; gap: 4px;
+  padding: 0 6px; height: 16px;
+  border: 1px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  white-space: nowrap; font-size: 10px;
+}
+.conn-banner {
+  height: 28px; display: flex; align-items: center;
+  padding: 0 12px; gap: 10px;
+  background: #C0C0C0;
+  border-bottom: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  flex-shrink: 0; font-size: 11px;
+}
+.conn-title {
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: 13px; font-weight: 900; letter-spacing: 0.12em;
+  color: #000080; text-transform: uppercase;
+}
+.storylet-chip {
+  background: #FFFFCC; border: 1px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  padding: 1px 8px; font-size: 11px; color: #800080;
+  font-family: "Courier New", monospace;
+}
+.conn-status {
+  margin-left: auto; display: flex; align-items: center; gap: 5px;
+  font-family: "Courier New", monospace; font-size: 11px;
+  color: #00AA00;
+}
+.conn-dot {
+  width: 7px; height: 7px; background: #00AA00;
+  border: 1px solid #006600;
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+.main-body {
+  flex: 1; display: flex; overflow: hidden; gap: 2px;
+  background: #808080; min-height: 0;
+}
+.col-mid {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden; background: #C0C0C0;
+}
+
+/* ── PANEL HEADER ─────────────────────────────────── */
+.panel-header {
+  background: linear-gradient(to right, #000080, #1084D0);
+  color: #ffffff;
+  padding: 3px 8px;
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-header-black {
+  background: #000000;
+  color: #ffffff;
+  padding: 3px 8px;
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+/* ── LEFT PANEL: World State (mockup) ───────── */
+.ws-section {
+  flex: 1; overflow-y: auto;
+  scrollbar-width: auto;
+  scrollbar-color: #808080 #C0C0C0;
+  min-height: 0;
+}
+.ws-group {
+  border-bottom: 1px solid #808080;
+}
+.ws-item {
+  padding: 5px 8px;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px;
+  border-bottom: 1px solid #d8d8d8;
+}
+.ws-item:nth-child(even) { background: #d4d0cc; }
+.ws-label {
+  flex: 1; font-family: "Courier New", monospace;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: #000000;
+}
+.ws-val {
+  width: 22px; text-align: right;
+  font-family: "Courier New", monospace;
+  font-size: 10px; color: #000080; font-weight: 700;
+}
+
+/* ── NARRATIVE / DIALOGUE (mockup) ───────── */
+.msg-row {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e8e8e8;
+  animation: fadeIn 0.2s ease-out;
+  display: flex; gap: 8px;
+  align-items: flex-start;
+}
+.msg-role-badge {
+  font-family: "Courier New", monospace;
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  width: 42px; flex-shrink: 0; margin-top: 1px;
+}
+.msg-text {
+  font-size: 13px; line-height: 1.55; color: #000; flex: 1;
+}
+
+/* ── RIGHT PANEL: Game Log (mockup) ─────── */
+.game-log {
+  flex: 1; overflow-y: auto;
+  scrollbar-width: auto; scrollbar-color: #808080 #C0C0C0;
+  min-height: 0;
+}
+.log-entry {
+  padding: 4px 8px;
+  font-size: 11px; font-family: "Courier New", monospace;
+  border-bottom: 1px solid #d0d0d0;
+  display: grid; grid-template-columns: 28px 1fr;
+  gap: 4px; align-items: start;
+}
+.log-entry:nth-child(even) { background: #d4d0cc; }
+.log-turn {
+  color: #808080; font-size: 10px;
+  text-align: right; font-weight: 700;
+}
+.log-msg { line-height: 1.3; }
+.log-type {
+  display: inline-block;
+  font-size: 9px; font-weight: 700;
+  padding: 0 3px; margin-right: 3px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+/* ── DEBUG PANEL ───────────────────────── */
+.debug-section {
+  flex-shrink: 0; border-top: 2px solid #808080;
+  overflow: hidden; transition: max-height 0.1s;
+}
+.debug-toggle {
+  width: 100%; background: #000000; color: #ffffff;
+  border: none; padding: 4px 8px;
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: 10px; font-weight: 900; text-align: left;
+  cursor: pointer; text-transform: uppercase; letter-spacing: 0.12em;
+  display: flex; align-items: center; gap: 6px; transition: none;
+}
+.debug-toggle:hover { background: #222; }
+.debug-toggle:focus-visible { outline: 2px dotted #fff; outline-offset: 2px; }
+.debug-body {
+  background: #C0C0C0; max-height: 180px; overflow-y: auto;
+  scrollbar-width: auto; scrollbar-color: #808080 #C0C0C0;
+  padding: 6px 8px; font-family: "Courier New", monospace; font-size: 11px;
+}
+.debug-entry {
+  padding: 2px 0; border-bottom: 1px solid #d0d0d0;
+  color: #000; display: flex; justify-content: space-between; gap: 8px;
+  font-size: 10px;
+}
+.debug-key { color: #808080; }
+.debug-val { color: #0000AA; font-weight: 700; }
+.blink { animation: blink 1s step-end infinite; }
+.flag-row {
+  padding: 4px 8px;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-family: "Courier New", monospace;
+  border-bottom: 1px solid #d8d8d8;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  user-select: none;
+}
+.flag-row:nth-child(even) { background: #d4d0cc; }
+.flag-led {
+  width: 10px; height: 10px;
+  border: 1px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  flex-shrink: 0;
+}
+.flag-led.on  { background: #00FF00; }
+.flag-led.off { background: #303030; }
+
+/* ── HIT COUNTER ─────────────────────────────────── */
+.hit-counter {
+  padding: 6px 8px;
+  background: #000000;
+  border-top: 2px solid #808080;
+  font-family: "Courier New", monospace;
+  font-size: 10px;
+  color: #00FF00;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.hit-counter-inner {
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  padding: 3px 6px;
+  display: inline-block;
+  letter-spacing: 0.06em;
+}
+
+/* ── 选择文本色 ───────────────────────────────────── */
 ::selection {
-  background-color: rgba(79, 110, 247, 0.3);
-  color: var(--text-primary);
+  background-color: rgba(0,0,255,0.2);
+  color: #000;
 }

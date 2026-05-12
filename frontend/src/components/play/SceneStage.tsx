@@ -12,29 +12,25 @@ export default function SceneStage() {
     <div style={{
       flex: 2.2,
       position: 'relative',
-      background: 'var(--bg-stage)',
+      background: '#808080',
       backgroundImage: [
-        'linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px)',
-        'linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px)',
+        'linear-gradient(to right, rgba(0,0,0,0.15) 1px, transparent 1px)',
+        'linear-gradient(to bottom, rgba(0,0,0,0.15) 1px, transparent 1px)',
       ].join(','),
-      backgroundSize: '60px 60px',
-      borderBottom: '1px solid var(--border)',
+      backgroundSize: '40px 40px',
       display: 'flex', justifyContent: 'center', alignItems: 'flex-end',
       overflow: 'hidden',
+      border: '2px solid',
+      borderColor: '#808080 #ffffff #ffffff #808080',
+      minHeight: 0,
     }}>
-      {/* Stage Header */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0,
-        background: 'var(--text)', color: 'var(--bg-panel)',
-        padding: '4px 10px', fontSize: '11px', fontWeight: 700,
-        letterSpacing: '0.1em', textTransform: 'uppercase',
-        zIndex: 10,
-      }}>
+      {/* Stage Header — 90s */}
+      <div className="panel-header" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
         THE STAGE / {currentLandmark?.title ?? '—'}
       </div>
 
       {/* 角色容器 */}
-      <div style={{ display: 'flex', gap: '60px', paddingBottom: '30px', zIndex: 5 }}>
+      <div style={{ display: 'flex', gap: '40px', paddingBottom: '20px', zIndex: 5, alignItems: 'flex-end' }}>
         <CharPortrait
           name="TRIP"
           color="var(--trip-color)"
@@ -52,43 +48,40 @@ export default function SceneStage() {
 
 function CharPortrait({ name, color, speaking }: { name: string; color: string; speaking: boolean }) {
   return (
-    <div style={{
+    <div className={speaking ? 'bevel-in' : 'bevel-out'} style={{
       width: '160px', height: '220px',
-      border: `3px solid ${color}`,
-      background: 'var(--bg-surface)',
+      background: '#d0ccc8',
       position: 'relative',
-      boxShadow: speaking
-        ? `0 0 0 3px ${color}40, 8px 8px 0 rgba(0,0,0,0.1)`
-        : '8px 8px 0 rgba(0,0,0,0.08)',
-      transition: 'box-shadow 0.3s',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
+      borderColor: speaking ? '#ffff00 #808080 #808080 #ffff00' : undefined,
     }}>
       {/* 说话指示 */}
       {speaking && (
         <div style={{
-          position: 'absolute', top: '-10px', left: '50%',
+          position: 'absolute', top: '-12px', left: '50%',
           transform: 'translateX(-50%)',
           width: '8px', height: '8px',
-          borderRadius: '50%', background: color,
+          background: '#FFFF00',
+          border: '1px solid #808080',
           animation: 'speakingPulse 0.8s ease-in-out infinite',
         }} />
       )}
       {/* 角色标签 */}
-      <div style={{
-        position: 'absolute', top: '-28px', width: '100%',
-        textAlign: 'center', fontFamily: "'Special Elite','Courier New',monospace",
-        fontSize: '14px', fontWeight: 700, letterSpacing: '2px', color,
+      <div className="panel-header" style={{
+        position: 'absolute', top: 0, left: 0, right: 0,
+        textAlign: 'center', fontSize: '12px',
+        background: 'linear-gradient(to right, #000080, #1084D0)',
       }}>
         {name}
       </div>
       {/* 占位内容 */}
       <div style={{
-        width: '90%', height: '90%',
-        background: 'var(--bg-surface)',
-        border: `1px dashed var(--border)`,
+        width: '80%', height: '80%',
+        background: '#c8c4c0',
+        border: '1px dashed #808080',
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
-        color: 'var(--text-dim)', fontSize: '12px', textAlign: 'center',
+        color: '#808080', fontSize: '12px', textAlign: 'center',
       }}>
         {name}<br />
         <span style={{ fontSize: '10px', marginTop: '4px', opacity: 0.6 }}>立绘占位</span>

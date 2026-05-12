@@ -209,7 +209,7 @@ function LlmLogItem({ entry, color }: { entry: LlmDebugEntry; color: string }) {
         {open ? <ChevronDown size={10} style={{ marginLeft: 'auto' }} /> : <ChevronRight size={10} style={{ marginLeft: 'auto' }} />}
       </button>
       {open && (
-        <div style={{ padding: '6px 8px', background: '#0a0c16', maxHeight: '300px', overflowY: 'auto', scrollbarWidth: 'thin' }}>
+        <div style={{ padding: '6px 8px', background: '#0a0c16', maxHeight: '300px', overflowY: 'auto' }}>
           {isReq && entry.messages && entry.messages.map((msg, i) => (
             <div key={i} style={{ marginBottom: '6px' }}>
               <div style={{ fontSize: '9px', color: C.muted, fontWeight: 600, marginBottom: '2px', textTransform: 'uppercase' }}>
@@ -291,8 +291,7 @@ function LlmLogSection() {
         style={{
           maxHeight: '400px',
           overflowY: 'auto',
-          scrollbarWidth: 'thin',
-          scrollbarColor: `${C.border} transparent`,
+        }}>
         }}
       >
         {debugLogs.length === 0 ? (
@@ -364,8 +363,6 @@ export default function DebugPanel() {
       display: 'flex',
       flexDirection: 'column',
       overflowY: 'auto',
-      scrollbarWidth: 'thin',
-      scrollbarColor: `${C.border} transparent`,
       fontSize: '12px',
     }}>
       {/* 标题栏 */}

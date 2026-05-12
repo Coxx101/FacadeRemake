@@ -4,10 +4,10 @@ import { inputStyle, selectStyle, addBtnStyle, removeBtnStyle } from './Inspecto
 import KeyInput from '../shared/KeyInput'
 
 const EDGE_COLORS = {
-  condition: '#2ecc71',
-  count: '#f1c40f',
-  fallback: '#e74c3c',
-  turnlimit: '#e67e22',
+  condition: '#00AA00',
+  count: '#FF8000',
+  fallback: '#FF0000',
+  turnlimit: '#0000FF',
 }
 
 export default function TransitionsTab({
@@ -50,8 +50,8 @@ export default function TransitionsTab({
   const otherLandmarks = landmarks.filter((l) => l.id !== landmark.id)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div style={{ color: '#8891b0', fontSize: '11px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ color: '#444', fontSize: '11px', fontFamily: '"MS Sans Serif", sans-serif' }}>
         出边按声明顺序检查，第一个满足条件的触发跳转
       </div>
 
@@ -59,16 +59,15 @@ export default function TransitionsTab({
         const type = getEdgeType(t)
         const color = EDGE_COLORS[type]
         return (
-          <div key={i} style={{
-            background: '#131828', border: `1px solid ${color}33`,
-            borderRadius: '8px', padding: '12px',
-            borderLeft: `3px solid ${color}`,
+          <div key={i} className="bevel-out" style={{
+            background: '#C0C0C0',
+            padding: '10px',
           }}>
             {/* 头部：标签 + 目标 + 删除 */}
-            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', alignItems: 'center' }}>
-              <span style={{
-                background: `${color}22`, color, fontSize: '10px',
-                padding: '2px 6px', borderRadius: '3px', fontWeight: 600,
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
+              <span className="bevel-out" style={{
+                background: '#d0d0ff', color, fontSize: '10px',
+                padding: '1px 5px', fontWeight: 600,
                 flexShrink: 0,
               }}>
                 {type}
@@ -84,7 +83,7 @@ export default function TransitionsTab({
 
             {/* 目标节点 */}
             <div style={{ marginBottom: '8px' }}>
-              <div style={{ color: '#8891b0', fontSize: '11px', marginBottom: '3px' }}>目标节点</div>
+              <div style={{ color: '#444', fontSize: '11px', marginBottom: '3px' }}>目标节点</div>
               <select
                 value={t.target_id}
                 onChange={(e) => updateTransition(i, { target_id: e.target.value })}
@@ -102,7 +101,7 @@ export default function TransitionsTab({
             {/* 限制条件行 */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
               <div style={{ flex: 1 }}>
-                <div style={{ color: '#8891b0', fontSize: '11px', marginBottom: '3px' }}>Turn Limit</div>
+                <div style={{ color: '#444', fontSize: '11px', marginBottom: '3px' }}>Turn Limit</div>
                 <input
                   type="number" min={1}
                   value={t.turn_limit ?? ''}
@@ -112,7 +111,7 @@ export default function TransitionsTab({
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ color: '#8891b0', fontSize: '11px', marginBottom: '3px' }}>Storylet Count</div>
+                <div style={{ color: '#444', fontSize: '11px', marginBottom: '3px' }}>Storylet Count</div>
                 <input
                   type="number" min={1}
                   value={t.storylet_count ?? ''}
@@ -129,9 +128,9 @@ export default function TransitionsTab({
                 type="checkbox"
                 checked={t.is_fallback}
                 onChange={(e) => updateTransition(i, { is_fallback: e.target.checked })}
-                style={{ width: '14px', height: '14px', accentColor: '#e74c3c' }}
+                style={{ width: '14px', height: '14px', accentColor: '#FF0000' }}
               />
-              <span style={{ color: '#8891b0', fontSize: '11px' }}>兜底分支（is_fallback）</span>
+              <span style={{ color: '#444', fontSize: '11px' }}>兜底分支（is_fallback）</span>
             </label>
 
             {/* Conditions 列表 */}

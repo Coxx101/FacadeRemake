@@ -57,17 +57,29 @@ function DesignMode() {
         </ReactFlowProvider>
       </div>
 
-      {/* 可拖拽分隔条 */}
+      {/* 可拖拽分隔条 — 90s 斜面风格 */}
       <div
         onMouseDown={onMouseDown}
         style={{
           width: '5px', cursor: 'col-resize',
-          background: '#2e3250',
+          background: '#C0C0C0',
+          borderLeft: '2px solid #ffffff',
+          borderRight: '2px solid #808080',
           position: 'relative', zIndex: 10,
           flexShrink: 0,
         }}
-        onMouseEnter={(e) => { if (!isResizing.current) (e.currentTarget.style.background = '#4f6ef7') }}
-        onMouseLeave={(e) => { if (!isResizing.current) (e.currentTarget.style.background = '#2e3250') }}
+        onMouseEnter={(e) => {
+          if (!isResizing.current) {
+            e.currentTarget.style.borderLeftColor = '#808080'
+            e.currentTarget.style.borderRightColor = '#ffffff'
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isResizing.current) {
+            e.currentTarget.style.borderLeftColor = '#ffffff'
+            e.currentTarget.style.borderRightColor = '#808080'
+          }
+        }}
       />
 
       {/* 右侧：Inspector / CharactersPanel / WorldStatePanel / LibraryPanel（动态宽度） */}

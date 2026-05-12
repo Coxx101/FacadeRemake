@@ -17,60 +17,26 @@ function ConnectionBanner() {
   const connected = usePlayStore((s) => s.connected)
   const connecting = usePlayStore((s) => s.connecting)
   const currentStorylet = usePlayStore((s) => s.currentStorylet)
+  const currentLandmark = usePlayStore((s) => s.currentLandmark)
 
-  const statusColor = connected ? 'var(--good)' : connecting ? 'var(--warn)' : 'var(--danger)'
+  const statusText = connected ? 'CONNECTED' : connecting ? 'WAITING...' : 'DISCONNECTED'
+  const dotColor = connected ? '#00AA00' : connecting ? '#b8860b' : '#FF0000'
 
   return (
-    <div style={{
-      height: '32px',
-      display: 'flex',
-      alignItems: 'center',
-      padding: '0 16px',
-      gap: '12px',
-      background: 'var(--bg-surface)',
-      borderBottom: '1px solid var(--border)',
-      flexShrink: 0,
-    }}>
-      <span style={{
-        fontFamily: "'Special Elite','Courier New',monospace",
-        fontSize: '13px',
-        fontWeight: 700,
-        color: 'var(--text)',
-        letterSpacing: '0.1em',
-      }}>
-        FACADE REMAKE
-      </span>
+    <div className="conn-banner">
+      <span className="conn-title">FACADE REMAKE</span>
       {currentStorylet?.title && (
-        <span style={{
-          fontSize: '11px',
-          color: 'var(--storylet-tag)',
-          padding: '1px 8px',
-          background: '#f5f0fc',
-          borderRadius: '10px',
-          border: '1px solid #e8dff5',
-        }}>
-          {currentStorylet.title}
-        </span>
+        <div className="storylet-chip">Storylet: {currentStorylet.title}</div>
       )}
-      <span style={{
-        marginLeft: 'auto',
-        fontSize: '11px',
-        color: statusColor,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '5px',
-      }}>
-        <span style={{
-          width: '6px',
-          height: '6px',
-          borderRadius: '50%',
-          background: statusColor,
-          display: 'inline-block',
-          boxShadow: connected ? '0 0 5px var(--good)' : connecting ? '0 0 5px var(--warn)' : 'none',
-          animation: connecting ? 'pulse 1s ease-in-out infinite' : 'none',
-        }} />
-        {connected ? 'Connected' : connecting ? 'Connecting…' : 'Disconnected'}
-      </span>
+      {currentLandmark && (
+        <div className="storylet-chip" style={{ color:'#000080', background:'#d0e8ff' }}>
+          {currentLandmark.title} · {currentLandmark.phase_tag}
+        </div>
+      )}
+      <div className="conn-status">
+        <div className="conn-dot" style={{ background: dotColor }} />
+        {statusText}
+      </div>
     </div>
   )
 }
@@ -80,6 +46,7 @@ export default function PlayMode() {
   const messages = usePlayStore((s) => s.messages)
   const isLoading = usePlayStore((s) => s.isLoading)
   const connected = usePlayStore((s) => s.connected)
+  const currentStorylet = usePlayStore((s) => s.currentStorylet)
   const connecting = usePlayStore((s) => s.connecting)
   const backendReady = usePlayStore((s) => s.backendReady)
   const sentInitScene = usePlayStore((s) => s.sentInitScene)
@@ -254,30 +221,82 @@ export default function PlayMode() {
   }
 
   return (
-    <div data-play-mode style={{
-      flex: 1,
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-      background: 'var(--bg-page)',
-    }}>
+    <div
+      className="app-wrapper bevel-out"
+      data-play-mode
+      style={{
+        flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        margin: '6px',
+        background: '#C0C0C0',
+      }}>
+
+      {/* ── OUTER WINDOW TITLE BAR ── */}
+      <div className="title-bar">
+        <div className="win-icon">F</div>
+        <span>FacadeRemake — Play Mode</span>
+        <span style={{ fontFamily:'"Courier New",monospace', fontSize:'10px', opacity:0.7, fontWeight:400, marginLeft:'4px' }}>
+          v2.0 [Retro Edition]
+        </span>
+        <span className="new-badge pulse-badge" style={{
+          background:'#FF0000', color:'#FFFF00', fontSize:'9px',
+          padding:'1px 5px', letterSpacing:'0.08em',
+          fontFamily:'"Arial Black",sans-serif',
+          animation:'pulse-glow 1.5s ease-in-out infinite',
+        }}>NEW!</span>
+        <div className="title-bar-btns">
+          <div className="title-bar-btn" title="minimize">_</div>
+          <div className="title-bar-btn" title="maximize">□</div>
+          <div className="title-bar-btn" title="close" style={{ background:'#c02020', color:'#fff', fontWeight:900 }}>✕</div>
+        </div>
+      </div>
+
+      {/* Marquee 滚动公告栏 — 90s */}
+      <div className="marquee-bar" role="marquee" aria-live="polite">
+        <div className="marquee-inner">
+          <span style={{color:'#FFFF00'}}>★ WELCOME TO FACADE REMAKE ★</span>
+          <span style={{color:'#00FF00'}}>◆ 角色：TRIP &amp; GRACE ◆</span>
+          <span style={{color:'#FF8000'}}>▲ INTERACTIVE NARRATIVE ▲</span>
+          <span style={{color:'#80FFFF'}}>◎ WebSocket ENABLED ◎</span>
+          <span style={{color:'#FFFF00'}}>★ WELCOME TO FACADE REMAKE ★</span>
+        </div>
+      </div>
+
       {/* 连接状态横幅 */}
       <ConnectionBanner />
 
-      {/* 三栏主体 */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0, gap: '1px', background: 'var(--border)' }}>
-        {/* 左栏 */}
-        <LeftPanel />
+      <div className="hr-groove" />
 
-        {/* 中栏 */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-page)' }}>
+      {/* 三栏主体 */}
+      <div className="main-body" style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0, gap: '2px', background: '#808080' }}>
+        <LeftPanel />
+        <div className="col-mid" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#C0C0C0' }}>
           <SceneStage />
           <NarrativeBox messages={messages} isLoading={isLoading} />
           <CommandBar />
         </div>
-
-        {/* 右栏 */}
         <RightPanel />
+      </div>
+
+      {/* Construction 条纹 */}
+      <div className="construction-bar" role="presentation" />
+
+      {/* ── STATUS BAR ── */}
+      <div className="status-bar">
+        <div className="status-cell">
+          <span style={{ color: connected ? '#00AA00' : '#808080' }}>●</span>
+          {connected ? 'CONNECTED' : 'DISCONNECTED'}
+        </div>
+        <div className="status-cell">
+          TURN: <strong>{usePlayStore.getState().turn}</strong>
+        </div>
+        <div className="status-cell">
+          {currentStorylet?.title ? (
+            <><span style={{color:'#800080'}}>{currentStorylet.title}</span></>
+          ) : 'NO STORYLET'}
+        </div>
+        <div className="status-cell" style={{ marginLeft: 'auto' }}>
+          <span style={{ fontFamily:"'Special Elite','Courier New',monospace" }} id="status-time">{}</span>
+        </div>
       </div>
     </div>
   )

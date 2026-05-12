@@ -23,21 +23,21 @@ export default function Inspector() {
       .map((id) => landmarks.find((l) => l.id === id))
       .filter(Boolean) as Landmark[]
     return (
-      <div style={{
+      <div className="bevel-out" style={{
         width: inspectorWidth, flexShrink: 0,
-        borderLeft: '1px solid #2e3250',
-        background: '#1a1d27',
+        borderLeft: '2px solid #808080',
+        background: '#C0C0C0',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         flexDirection: 'column', gap: '12px', padding: '24px',
       }}>
-        <div style={{ fontSize: '32px', opacity: 0.4 }}><Layers size={32} color="#4f6ef7" /></div>
-        <div style={{ color: '#e8eaf0', fontSize: '14px', fontWeight: 600 }}>
+        <div style={{ fontSize: '32px', opacity: 0.4 }}><Layers size={32} color="#000080" /></div>
+        <div style={{ color: '#000', fontSize: '14px', fontWeight: 600 }}>
           已选中 {selectedIds.length} 个节点
         </div>
-        <div style={{ color: '#8891b0', fontSize: '12px', textAlign: 'center', lineHeight: 1.6 }}>
+        <div style={{ color: '#444', fontSize: '12px', textAlign: 'center', lineHeight: 1.6 }}>
           可拖拽移动全部选中节点<br />按 Delete 键批量删除
         </div>
-        <div style={{ color: '#4a5070', fontSize: '11px', textAlign: 'center', lineHeight: 1.5, marginTop: '8px' }}>
+        <div style={{ color: '#808080', fontSize: '11px', textAlign: 'center', lineHeight: 1.5, marginTop: '8px' }}>
           {selectedLandmarks.map((l) => l.title || l.id).join('、')}
         </div>
       </div>
@@ -46,15 +46,14 @@ export default function Inspector() {
 
   if (!selectedId || !landmark) {
     return (
-      <div style={{
+      <div className="bevel-out" style={{
         width: inspectorWidth, flexShrink: 0,
-        borderLeft: '1px solid #2e3250',
-        background: '#1a1d27',
+        background: '#C0C0C0',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexDirection: 'column', gap: '12px',
+        flexDirection: 'column', gap: '12px', padding: '24px',
       }}>
-        <div style={{ fontSize: '32px', opacity: 0.3 }}><Box size={32} color="#4a5070" /></div>
-        <div style={{ color: '#4a5070', fontSize: '13px', textAlign: 'center' }}>
+        <div style={{ fontSize: '32px', opacity: 0.3 }}><Box size={32} color="#808080" /></div>
+        <div style={{ color: '#808080', fontSize: '13px', textAlign: 'center' }}>
           点击蓝图中的节点<br />查看并编辑属性
         </div>
       </div>
@@ -62,46 +61,36 @@ export default function Inspector() {
   }
 
   return (
-    <div style={{
+    <div className="bevel-out" style={{
       width: inspectorWidth, flexShrink: 0,
-      borderLeft: '1px solid #2e3250',
-      background: '#1a1d27',
+      background: '#C0C0C0',
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden', height: '100%',
     }}>
-      {/* 节点标题栏 */}
-      <div style={{
-        padding: '14px 16px', borderBottom: '1px solid #2e3250',
-        background: '#1e2130',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '18px' }}>{landmark.is_ending ? <Flag size={18} color="#f5a623" /> : <Box size={18} color="#4f6ef7" />}</span>
-          <div>
-            <div style={{ color: '#e8eaf0', fontWeight: 700, fontSize: '14px' }}>
-              {landmark.title}
-            </div>
-            <div style={{ color: '#4a5070', fontSize: '11px', fontFamily: 'monospace' }}>
-              id: {landmark.id}
-            </div>
-          </div>
-        </div>
+      {/* 节点标题栏 — 90s */}
+      <div className="panel-header" style={{ padding: '4px 10px' }}>
+        {landmark.is_ending ? <Flag size={16} color="#800080" /> : <Box size={16} color="#000080" />}
+        <span style={{ fontWeight: 700, fontSize: '12px' }}>{landmark.title}</span>
+        <span style={{ fontSize: '10px', marginLeft: 'auto', fontFamily: '"Courier New",monospace', opacity: 0.7 }}>
+          id:{landmark.id}
+        </span>
       </div>
 
-      {/* Tabs */}
-      <div style={{
-        display: 'flex', borderBottom: '1px solid #2e3250',
-        background: '#1a1d27',
+      {/* Tabs — 90s */}
+      <div className="bevel-out" style={{
+        display: 'flex', margin: '3px', overflow: 'hidden',
       }}>
         {(['properties', 'transitions'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setInspectorTab(tab)}
             style={{
-              flex: 1, padding: '10px 0', fontSize: '12px', fontWeight: 600,
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: inspectorTab === tab ? '#4f6ef7' : '#4a5070',
-              borderBottom: `2px solid ${inspectorTab === tab ? '#4f6ef7' : 'transparent'}`,
-              transition: 'all 0.15s',
+              flex: 1, padding: '3px 0', fontSize: '11px', fontWeight: 600,
+              background: inspectorTab === tab ? '#000080' : '#C0C0C0',
+              border: 'none', cursor: 'pointer',
+              color: inspectorTab === tab ? '#fff' : '#000',
+              fontFamily: '"MS Sans Serif", sans-serif',
+              transition: 'background 0.1s',
             }}
           >
             {tab === 'properties' ? '属性' : `出边 (${landmark.transitions.length})`}
@@ -147,7 +136,7 @@ function PropertiesTab({
       <Field label="ID">
         <input
           value={form.id} readOnly
-          style={{ ...inputStyle, background: '#131828', cursor: 'not-allowed' }}
+          style={{ ...inputStyle, background: '#d0d0d0', cursor: 'not-allowed' }}
         />
       </Field>
 
@@ -197,9 +186,9 @@ function PropertiesTab({
               type="checkbox"
               checked={form.is_ending}
               onChange={(e) => { set('is_ending', e.target.checked); setTimeout(save, 50) }}
-              style={{ width: '16px', height: '16px', accentColor: '#f5a623' }}
+              style={{ width: '16px', height: '16px', accentColor: '#0000FF' }}
             />
-            <span style={{ color: '#8891b0', fontSize: '12px' }}>is_ending</span>
+            <span style={{ color: '#444', fontSize: '12px' }}>is_ending</span>
           </label>
         </Field>
       </div>
@@ -259,7 +248,7 @@ function Field({
 }) {
   return (
     <div style={style}>
-      <div style={{ color: '#8891b0', fontSize: '11px', marginBottom: '4px', fontWeight: 500 }}>
+      <div style={{ color: '#444', fontSize: '11px', marginBottom: '4px', fontWeight: 600 }}>
         {label}
       </div>
       {children}
@@ -270,9 +259,10 @@ function Field({
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      color: '#4a5070', fontSize: '11px', fontWeight: 600,
+      color: '#000', fontSize: '11px', fontWeight: 700,
       letterSpacing: '0.08em', textTransform: 'uppercase',
-      paddingTop: '4px', borderTop: '1px solid #2e3250',
+      paddingTop: '4px', paddingBottom: '2px',
+      borderTop: '2px solid #808080',
     }}>
       {children}
     </div>
@@ -287,17 +277,18 @@ function TagInput({ tags, onChange }: { tags: string[]; onChange: (tags: string[
         {tags.map((tag) => (
           <span
             key={tag}
+            className="bevel-out"
             style={{
-              background: '#1e2a4a', border: '1px solid #2e3a60',
-              borderRadius: '4px', padding: '2px 8px',
-              fontSize: '11px', color: '#7090e0',
+              background: '#d0d0ff',
+              padding: '1px 6px',
+              fontSize: '11px', color: '#000080',
               display: 'flex', alignItems: 'center', gap: '4px',
             }}
           >
             {tag}
             <button
               onClick={() => onChange(tags.filter((t) => t !== tag))}
-              style={{ background: 'none', border: 'none', color: '#4a5070', cursor: 'pointer', fontSize: '12px', lineHeight: 1 }}
+              style={{ background: 'none', border: 'none', color: '#808080', cursor: 'pointer', fontSize: '12px', lineHeight: 1 }}
             >×</button>
           </span>
         ))}
@@ -391,30 +382,38 @@ function EffectListEditor({
 // ── 共用样式 ──────────────────────────────────────────────────────────────────
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '6px 10px',
-  background: '#131828', border: '1px solid #2e3250',
-  borderRadius: '6px', color: '#e8eaf0', fontSize: '12px',
-  outline: 'none', fontFamily: 'inherit',
+  width: '100%', padding: '3px 6px',
+  background: '#ffffff', border: '2px solid',
+  borderColor: '#808080 #ffffff #ffffff #808080',
+  boxShadow: 'inset 1px 1px 0 #404040, inset -1px -1px 0 #dfdfdf',
+  borderRadius: '0', color: '#000', fontSize: '11px',
+  outline: 'none', fontFamily: '"MS Sans Serif", sans-serif',
 }
 
 const selectStyle: React.CSSProperties = {
-  padding: '6px 8px',
-  background: '#131828', border: '1px solid #2e3250',
-  borderRadius: '6px', color: '#e8eaf0', fontSize: '11px',
+  padding: '3px 4px',
+  background: '#ffffff', border: '2px solid',
+  borderColor: '#808080 #ffffff #ffffff #808080',
+  borderRadius: '0', color: '#000', fontSize: '11px',
   outline: 'none', cursor: 'pointer',
+  fontFamily: '"MS Sans Serif", sans-serif',
 }
 
 const addBtnStyle: React.CSSProperties = {
-  padding: '6px 12px',
-  background: '#1e2a4a', border: '1px solid #2e3a60',
-  borderRadius: '6px', color: '#4f6ef7', fontSize: '12px',
+  padding: '3px 10px',
+  background: '#C0C0C0', border: '2px solid',
+  borderColor: '#ffffff #808080 #808080 #ffffff',
+  borderRadius: '0', color: '#0000FF', fontSize: '12px',
   cursor: 'pointer', whiteSpace: 'nowrap',
+  fontFamily: '"MS Sans Serif", sans-serif',
+  fontWeight: 600,
 }
 
 const removeBtnStyle: React.CSSProperties = {
   width: '24px', height: '24px', flexShrink: 0,
-  background: 'rgba(231,76,60,0.1)', border: '1px solid rgba(231,76,60,0.3)',
-  borderRadius: '4px', color: '#e74c3c', fontSize: '14px',
+  background: '#C0C0C0', border: '2px solid',
+  borderColor: '#ffffff #808080 #808080 #ffffff',
+  borderRadius: '0', color: '#FF0000', fontSize: '14px',
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
 }
 

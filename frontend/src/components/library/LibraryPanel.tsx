@@ -10,10 +10,25 @@ import type {
 
 type LibraryTab = 'actions' | 'expressions' | 'props' | 'locations'
 
+// ── 90s Library 输入框样式 ──
+const libInputStyle: React.CSSProperties = {
+  background: '#ffffff',
+  border: '2px solid',
+  borderColor: '#808080 #ffffff #ffffff #808080',
+  boxShadow: 'inset 1px 1px 0 #404040, inset -1px -1px 0 #dfdfdf',
+  borderRadius: '0',
+  color: '#000',
+  fontSize: '11px',
+  padding: '3px 6px',
+  outline: 'none',
+  width: '100%',
+  fontFamily: '"MS Sans Serif", sans-serif',
+}
+
 export default function LibraryPanel() {
   const [activeTab, setActiveTab] = useState<LibraryTab>('actions')
-  
-  // 状态和操作
+  const inspectorWidth = useStore((s: StoreState) => s.inspectorWidth)
+
   const actionLibrary = useStore((s: StoreState) => s.actionLibrary)
   const expressionLibrary = useStore((s: StoreState) => s.expressionLibrary)
   const propLibrary = useStore((s: StoreState) => s.propLibrary)
@@ -79,8 +94,8 @@ export default function LibraryPanel() {
     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={handleAddAction} style={{
-          background: '#45475a', color: '#cdd6f4', border: 'none',
-          padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+          background: '#C0C0C0', border: '2px solid', borderColor: '#ffffff #808080 #808080 #ffffff',
+          padding: '6px 12px', borderRadius: '0', cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px'
         }}>
           <Plus size={16} />
@@ -97,7 +112,7 @@ export default function LibraryPanel() {
           />
         ))}
         {actionLibrary.length === 0 && (
-          <div style={{ padding: '32px', textAlign: 'center', color: '#6c7086', fontSize: '14px' }}>
+          <div style={{ padding: '32px', textAlign: 'center', color: '#808080', fontSize: '14px' }}>
             暂无动作，请点击右上角添加
           </div>
         )}
@@ -109,8 +124,8 @@ export default function LibraryPanel() {
     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={handleAddExpression} style={{
-          background: '#45475a', color: '#cdd6f4', border: 'none',
-          padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+          background: '#C0C0C0', border: '2px solid', borderColor: '#ffffff #808080 #808080 #ffffff',
+          padding: '6px 12px', borderRadius: '0', cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px'
         }}>
           <Plus size={16} />
@@ -127,7 +142,7 @@ export default function LibraryPanel() {
           />
         ))}
         {expressionLibrary.length === 0 && (
-          <div style={{ padding: '32px', textAlign: 'center', color: '#6c7086', fontSize: '14px' }}>
+          <div style={{ padding: '32px', textAlign: 'center', color: '#808080', fontSize: '14px' }}>
             暂无表情，请点击右上角添加
           </div>
         )}
@@ -139,8 +154,8 @@ export default function LibraryPanel() {
     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={handleAddProp} style={{
-          background: '#45475a', color: '#cdd6f4', border: 'none',
-          padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+          background: '#C0C0C0', border: '2px solid', borderColor: '#ffffff #808080 #808080 #ffffff',
+          padding: '6px 12px', borderRadius: '0', cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px'
         }}>
           <Plus size={16} />
@@ -157,7 +172,7 @@ export default function LibraryPanel() {
           />
         ))}
         {propLibrary.length === 0 && (
-          <div style={{ padding: '32px', textAlign: 'center', color: '#6c7086', fontSize: '14px' }}>
+          <div style={{ padding: '32px', textAlign: 'center', color: '#808080', fontSize: '14px' }}>
             暂无物品，请点击右上角添加
           </div>
         )}
@@ -169,8 +184,8 @@ export default function LibraryPanel() {
     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={handleAddLocation} style={{
-          background: '#45475a', color: '#cdd6f4', border: 'none',
-          padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+          background: '#C0C0C0', border: '2px solid', borderColor: '#ffffff #808080 #808080 #ffffff',
+          padding: '6px 12px', borderRadius: '0', cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px'
         }}>
           <Plus size={16} />
@@ -187,7 +202,7 @@ export default function LibraryPanel() {
           />
         ))}
         {locationLibrary.length === 0 && (
-          <div style={{ padding: '32px', textAlign: 'center', color: '#6c7086', fontSize: '14px' }}>
+          <div style={{ padding: '32px', textAlign: 'center', color: '#808080', fontSize: '14px' }}>
             暂无地点，请点击右上角添加
           </div>
         )}
@@ -196,17 +211,18 @@ export default function LibraryPanel() {
   )
 
   return (
-    <div style={{
+    <div className="bevel-out" style={{
+      width: inspectorWidth, flexShrink: 0,
       height: '100%', display: 'flex', flexDirection: 'column',
-      background: '#1e1e2e', color: '#cdd6f4',
+      background: '#C0C0C0',
     }}>
-      <div style={{ padding: '16px', borderBottom: '1px solid #313244' }}>
-        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>资源库</h2>
+      <div className="panel-header">
+        <h2 style={{ margin: 0, fontSize: '12px', fontWeight: 700 }}>资源库</h2>
       </div>
       
       <div style={{
-        display: 'flex', gap: '4px', padding: '12px 16px',
-        background: '#181825', borderBottom: '1px solid #313244'
+        display: 'flex', padding: '4px 6px', gap: '3px',
+        borderBottom: '2px solid #808080',
       }}>
         <TabButton active={activeTab === 'actions'} onClick={() => setActiveTab('actions')}>
           动作库
@@ -240,15 +256,16 @@ function TabButton({ children, active, onClick }: {
   return (
     <button
       onClick={onClick}
+      className={active ? 'bevel-in' : 'bevel-out'}
       style={{
-        background: active ? '#4f6ef7' : 'transparent',
-        color: active ? '#fff' : '#a6adc8',
-        border: 'none',
-        padding: '6px 12px',
-        borderRadius: '6px',
+        flex: 1, minWidth: 0,
+        background: active ? '#ffffff' : '#C0C0C0',
+        color: active ? '#000080' : '#000',
+        padding: '4px 0',
         cursor: 'pointer',
-        fontSize: '13px',
-        fontWeight: 500,
+        fontSize: '11px',
+        fontWeight: 600,
+        fontFamily: '"MS Sans Serif", sans-serif',
       }}
     >
       {children}
@@ -266,54 +283,42 @@ function ActionItem({
   onDelete: (id: string) => void,
 }) {
   return (
-    <div style={{ background: '#313244', borderRadius: '8px', padding: '12px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-        <input
-          value={action.label}
-          onChange={(e) => onUpdate(action.id, { label: e.target.value })}
+    <div className="bevel-out" style={{ background: '#C0C0C0', padding: '10px', marginBottom: '6px' }}>
+      {/* 标题行 */}
+      <div className="panel-header" style={{ margin: '-10px -10px 8px', padding: '4px 8px', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: '11px' }}>动作 · {action.id}</span>
+        <button onClick={() => onDelete(action.id)}
+          className="title-bar-btn" style={{ width: '16px', height: '14px', fontSize: '9px' }}
+        >×</button>
+      </div>
+
+      {/* 名称 */}
+      <div style={{ marginBottom: '6px' }}>
+        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>名称</div>
+        <input value={action.label} onChange={(e) => onUpdate(action.id, { label: e.target.value })}
           placeholder="动作名称"
-          style={{
-            background: '#181825', border: '1px solid #313244',
-            color: '#cdd6f4', borderRadius: '6px', padding: '8px 10px',
-            width: '100%', fontSize: '13px'
-          }}
-        />
-        <button onClick={() => onDelete(action.id)} style={{
-          background: '#f38ba833', color: '#f38ba8', border: 'none',
-          padding: '4px 8px', borderRadius: '4px', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px'
-        }}>
-          <Trash2 size={14} />
-        </button>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
-        <div style={{ fontSize: '12px', color: '#a6adc8', marginBottom: '4px' }}>描述</div>
-        <textarea
-          value={action.description}
-          onChange={(e) => onUpdate(action.id, { description: e.target.value })}
-          placeholder="描述这个动作"
-          rows={2}
-          style={{
-            background: '#181825', border: '1px solid #313244',
-            color: '#cdd6f4', borderRadius: '6px', padding: '8px 10px',
-            width: '100%', fontSize: '13px', resize: 'vertical'
-          }}
+          style={libInputStyle}
         />
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <div style={{ fontSize: '12px', color: '#a6adc8', marginBottom: '4px' }}>参数（用逗号分隔）</div>
-        <input
-          value={action.parameters.join(', ')}
+
+      {/* 描述 */}
+      <div style={{ marginBottom: '6px' }}>
+        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>描述</div>
+        <textarea value={action.description} onChange={(e) => onUpdate(action.id, { description: e.target.value })}
+          rows={2} placeholder="描述这个动作"
+          style={{ ...libInputStyle, resize: 'vertical' }}
+        />
+      </div>
+
+      {/* 参数 */}
+      <div>
+        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>参数（逗号分隔）</div>
+        <input value={action.parameters.join(', ')}
           onChange={(e) => onUpdate(action.id, { parameters: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
           placeholder="param1, param2"
-          style={{
-            background: '#181825', border: '1px solid #313244',
-            color: '#cdd6f4', borderRadius: '6px', padding: '8px 10px',
-            width: '100%', fontSize: '13px'
-          }}
+          style={libInputStyle}
         />
       </div>
-      <div style={{ fontSize: '12px', color: '#6c7086', marginTop: '8px' }}>ID: {action.id}</div>
     </div>
   )
 }
@@ -328,40 +333,23 @@ function ExpressionItem({
   onDelete: (id: string) => void,
 }) {
   return (
-    <div style={{ background: '#313244', borderRadius: '8px', padding: '12px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-        <input
-          value={expression.label}
-          onChange={(e) => onUpdate(expression.id, { label: e.target.value })}
-          placeholder="表情名称"
-          style={{
-            background: '#181825', border: '1px solid #313244',
-            color: '#cdd6f4', borderRadius: '6px', padding: '8px 10px',
-            width: '100%', fontSize: '13px'
-          }}
-        />
-        <button onClick={() => onDelete(expression.id)} style={{
-          background: '#f38ba833', color: '#f38ba8', border: 'none',
-          padding: '4px 8px', borderRadius: '4px', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px'
-        }}>
-          <Trash2 size={14} />
-        </button>
+    <div className="bevel-out" style={{ background: '#C0C0C0', padding: '10px', marginBottom: '6px' }}>
+      <div className="panel-header" style={{ margin: '-10px -10px 8px', padding: '4px 8px', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: '11px' }}>表情 · {expression.id}</span>
+        <button onClick={() => onDelete(expression.id)}
+          className="title-bar-btn" style={{ width: '16px', height: '14px', fontSize: '9px' }}
+        >×</button>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <div style={{ fontSize: '12px', color: '#a6adc8', marginBottom: '4px' }}>动画名称</div>
-        <input
-          value={expression.animation_name}
-          onChange={(e) => onUpdate(expression.id, { animation_name: e.target.value })}
-          placeholder="animation_name"
-          style={{
-            background: '#181825', border: '1px solid #313244',
-            color: '#cdd6f4', borderRadius: '6px', padding: '8px 10px',
-            width: '100%', fontSize: '13px'
-          }}
-        />
+      <div style={{ marginBottom: '6px' }}>
+        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>名称</div>
+        <input value={expression.label} onChange={(e) => onUpdate(expression.id, { label: e.target.value })}
+          placeholder="表情名称" style={libInputStyle} />
       </div>
-      <div style={{ fontSize: '12px', color: '#6c7086', marginTop: '8px' }}>ID: {expression.id}</div>
+      <div>
+        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>动画名称</div>
+        <input value={expression.animation_name} onChange={(e) => onUpdate(expression.id, { animation_name: e.target.value })}
+          placeholder="animation_name" style={libInputStyle} />
+      </div>
     </div>
   )
 }
@@ -376,27 +364,18 @@ function PropItem({
   onDelete: (id: string) => void,
 }) {
   return (
-    <div style={{ background: '#313244', borderRadius: '8px', padding: '12px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <input
-          value={prop.label}
-          onChange={(e) => onUpdate(prop.id, { label: e.target.value })}
-          placeholder="物品名称"
-          style={{
-            background: '#181825', border: '1px solid #313244',
-            color: '#cdd6f4', borderRadius: '6px', padding: '8px 10px',
-            width: '100%', fontSize: '13px'
-          }}
-        />
-        <button onClick={() => onDelete(prop.id)} style={{
-          background: '#f38ba833', color: '#f38ba8', border: 'none',
-          padding: '4px 8px', borderRadius: '4px', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px'
-        }}>
-          <Trash2 size={14} />
-        </button>
+    <div className="bevel-out" style={{ background: '#C0C0C0', padding: '10px', marginBottom: '6px' }}>
+      <div className="panel-header" style={{ margin: '-10px -10px 8px', padding: '4px 8px', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: '11px' }}>物品 · {prop.id}</span>
+        <button onClick={() => onDelete(prop.id)}
+          className="title-bar-btn" style={{ width: '16px', height: '14px', fontSize: '9px' }}
+        >×</button>
       </div>
-      <div style={{ fontSize: '12px', color: '#6c7086', marginTop: '8px' }}>ID: {prop.id}</div>
+      <div>
+        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>名称</div>
+        <input value={prop.label} onChange={(e) => onUpdate(prop.id, { label: e.target.value })}
+          placeholder="物品名称" style={libInputStyle} />
+      </div>
     </div>
   )
 }
@@ -411,40 +390,24 @@ function LocationItem({
   onDelete: (id: string) => void,
 }) {
   return (
-    <div style={{ background: '#313244', borderRadius: '8px', padding: '12px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-        <input
-          value={location.label}
-          onChange={(e) => onUpdate(location.id, { label: e.target.value })}
-          placeholder="地点名称"
-          style={{
-            background: '#181825', border: '1px solid #313244',
-            color: '#cdd6f4', borderRadius: '6px', padding: '8px 10px',
-            width: '100%', fontSize: '13px'
-          }}
-        />
-        <button onClick={() => onDelete(location.id)} style={{
-          background: '#f38ba833', color: '#f38ba8', border: 'none',
-          padding: '4px 8px', borderRadius: '4px', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px'
-        }}>
-          <Trash2 size={14} />
-        </button>
+    <div className="bevel-out" style={{ background: '#C0C0C0', padding: '10px', marginBottom: '6px' }}>
+      <div className="panel-header" style={{ margin: '-10px -10px 8px', padding: '4px 8px', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: '11px' }}>地点 · {location.id}</span>
+        <button onClick={() => onDelete(location.id)}
+          className="title-bar-btn" style={{ width: '16px', height: '14px', fontSize: '9px' }}
+        >×</button>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <div style={{ fontSize: '12px', color: '#a6adc8', marginBottom: '4px' }}>相邻地点（用逗号分隔）</div>
-        <input
-          value={(location.adjacent || []).join(', ')}
+      <div style={{ marginBottom: '6px' }}>
+        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>名称</div>
+        <input value={location.label} onChange={(e) => onUpdate(location.id, { label: e.target.value })}
+          placeholder="地点名称" style={libInputStyle} />
+      </div>
+      <div>
+        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>相邻地点（逗号分隔）</div>
+        <input value={(location.adjacent || []).join(', ')}
           onChange={(e) => onUpdate(location.id, { adjacent: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-          placeholder="living_room, kitchen"
-          style={{
-            background: '#181825', border: '1px solid #313244',
-            color: '#cdd6f4', borderRadius: '6px', padding: '8px 10px',
-            width: '100%', fontSize: '13px'
-          }}
-        />
+          placeholder="living_room, kitchen" style={libInputStyle} />
       </div>
-      <div style={{ fontSize: '12px', color: '#6c7086', marginTop: '8px' }}>ID: {location.id}</div>
     </div>
   )
 }

@@ -251,8 +251,6 @@ export default function ChatLog({ messages, isLoading }: ChatLogProps) {
       flex: 1,
       overflowY: 'auto',
       padding: '32px 40px 16px',
-      scrollbarWidth: 'thin',
-      scrollbarColor: '#2e3250 transparent',
     }}>
       <style>{`
         @keyframes fadeSlideIn {

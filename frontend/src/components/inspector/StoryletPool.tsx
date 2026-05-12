@@ -46,9 +46,9 @@ export default function StoryletPool({ landmark }: { landmark: Landmark }) {
 
   return (
     <div style={{
-      borderTop: '1px solid #2e3250',
-      background: '#131828',
-      maxHeight: collapsed ? '44px' : '280px',
+      borderTop: '2px solid #808080',
+      background: '#C0C0C0',
+      maxHeight: collapsed ? '40px' : '280px',
       transition: 'max-height 0.2s ease',
       overflow: 'hidden',
     }}>
@@ -56,28 +56,29 @@ export default function StoryletPool({ landmark }: { landmark: Landmark }) {
       <div
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '10px 14px', cursor: 'pointer', userSelect: 'none',
+          padding: '6px 10px', cursor: 'pointer', userSelect: 'none',
+          fontFamily: '"MS Sans Serif", sans-serif',
         }}
         onClick={() => setCollapsed((c) => !c)}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ color: '#4a5070', fontSize: '12px', transition: 'transform 0.2s', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0)' }}>▼</span>
-          <span style={{ color: '#8891b0', fontSize: '12px', fontWeight: 600 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: '#000', fontSize: '12px', transition: 'transform 0.2s', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0)' }}>▼</span>
+          <span style={{ color: '#000', fontSize: '12px', fontWeight: 600 }}>
             Storylet Pool
           </span>
-          <span style={{
-            background: '#1e2a4a', color: '#4f6ef7', fontSize: '10px',
-            padding: '1px 6px', borderRadius: '3px', fontWeight: 700,
+          <span className="bevel-out" style={{
+            background: '#d0d0ff', color: '#000080', fontSize: '10px',
+            padding: '1px 6px', fontWeight: 700,
           }}>
             {poolStorylets.length}
           </span>
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); createNew() }}
+          className="bevel-out"
           style={{
-            padding: '3px 10px', background: '#1e2a4a',
-            border: '1px solid #2e3a60', borderRadius: '5px',
-            color: '#4f6ef7', fontSize: '11px', cursor: 'pointer',
+            padding: '2px 8px', background: '#C0C0C0',
+            color: '#0000FF', fontSize: '11px', cursor: 'pointer',
           }}
         >
           + 新建
@@ -86,14 +87,14 @@ export default function StoryletPool({ landmark }: { landmark: Landmark }) {
 
       {/* 卡片列表 */}
       {!collapsed && (
-        <div style={{ overflow: 'auto', maxHeight: '230px', padding: '0 10px 10px' }}>
+        <div style={{ overflow: 'auto', maxHeight: '230px', padding: '0 8px 8px' }}>
           {poolStorylets.length === 0 ? (
-            <div style={{
-              textAlign: 'center', color: '#4a5070', fontSize: '12px',
-              padding: '20px', border: '1px dashed #2e3250', borderRadius: '6px',
+            <div className="bevel-out" style={{
+              textAlign: 'center', color: '#808080', fontSize: '12px',
+              padding: '16px', background: '#d0d0d0',
             }}>
               此阶段暂无 Storylet<br />
-              <span style={{ color: '#4f6ef7', cursor: 'pointer' }} onClick={createNew}>点击新建</span>
+              <span style={{ color: '#0000FF', cursor: 'pointer', textDecoration: 'underline' }} onClick={createNew}>点击新建</span>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -127,45 +128,46 @@ function StoryletCard({
   const condCount = storylet.conditions.length + (storylet.llm_trigger ? 1 : 0)
 
   return (
-    <div style={{
-      background: '#1a1d27', border: '1px solid #2e3250',
-      borderRadius: '7px', padding: '9px 11px',
+    <div className="bevel-out" style={{
+      background: '#C0C0C0',
+      padding: '8px 10px',
       display: 'flex', flexDirection: 'column', gap: '5px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
           {storylet.sticky && (
-            <span title="sticky"><Pin size={11} color="#f5a623" /></span>
+            <span title="sticky"><Pin size={11} color="#800080" /></span>
           )}
           <span style={{
-            color: '#e8eaf0', fontSize: '12px', fontWeight: 600,
+            color: '#000', fontSize: '12px', fontWeight: 600,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            fontFamily: '"MS Sans Serif", sans-serif',
           }}>
             {storylet.title || storylet.id}
           </span>
         </div>
         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-          <button onClick={onEdit} style={cardBtn('#4f6ef7')}>编辑</button>
+          <button onClick={onEdit} style={cardBtn('#0000FF')}>编辑</button>
           {confirmDelete ? (
             <>
               <button
                 onClick={() => { onDelete(); setConfirmDelete(false) }}
-                style={cardBtn('#e74c3c')}
+                style={cardBtn('#FF0000')}
               >确认</button>
               <button
                 onClick={() => setConfirmDelete(false)}
-                style={cardBtn('#4a5070')}
+                style={cardBtn('#808080')}
               >取消</button>
             </>
           ) : (
-            <button onClick={() => setConfirmDelete(true)} style={cardBtn('#e74c3c', 0.6)}>删</button>
+            <button onClick={() => setConfirmDelete(true)} style={cardBtn('#FF0000', 0.6)}>删</button>
           )}
         </div>
       </div>
 
       {storylet.narrative_goal && (
         <div style={{
-          color: '#8891b0', fontSize: '11px', lineHeight: 1.4,
+          color: '#444', fontSize: '11px', lineHeight: 1.4,
           overflow: 'hidden', textOverflow: 'ellipsis',
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
         }}>
@@ -175,10 +177,10 @@ function StoryletCard({
 
       {/* 徽章行 */}
       <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-        <Badge color="#4f6ef7" label={`base ${storylet.salience.base}`} />
-        {condCount > 0 && <Badge color="#f1c40f" label={`cond ${condCount}`} />}
-        {storylet.llm_trigger && <Badge color="#2ecc71" label="llm_trigger" />}
-        {storylet.repeatability !== 'never' && <Badge color="#e67e22" label={storylet.repeatability} />}
+        <Badge color="#0000FF" label={`base ${storylet.salience.base}`} />
+        {condCount > 0 && <Badge color="#FF8000" label={`cond ${condCount}`} />}
+        {storylet.llm_trigger && <Badge color="#00AA00" label="llm_trigger" />}
+        {storylet.repeatability !== 'never' && <Badge color="#FF8000" label={storylet.repeatability} />}
       </div>
     </div>
   )
@@ -186,9 +188,9 @@ function StoryletCard({
 
 function Badge({ color, label }: { color: string; label: string }) {
   return (
-    <span style={{
-      background: `${color}18`, color, fontSize: '10px',
-      padding: '1px 5px', borderRadius: '3px', fontWeight: 600,
+    <span className="bevel-out" style={{
+      background: '#C0C0C0', color, fontSize: '10px',
+      padding: '1px 5px', fontWeight: 600,
     }}>
       {label}
     </span>
@@ -197,9 +199,11 @@ function Badge({ color, label }: { color: string; label: string }) {
 
 function cardBtn(color: string, opacity = 1): React.CSSProperties {
   return {
-    padding: '2px 8px',
-    background: `${color}15`, border: `1px solid ${color}40`,
-    borderRadius: '4px', color: color, fontSize: '11px',
+    padding: '2px 6px',
+    background: '#C0C0C0', border: '2px solid',
+    borderColor: '#ffffff #808080 #808080 #ffffff',
+    color: color, fontSize: '11px',
     cursor: 'pointer', opacity,
+    fontFamily: '"MS Sans Serif", sans-serif',
   }
 }

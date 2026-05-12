@@ -48,38 +48,43 @@ export default function CommandBar() {
   const btnStyle = (enabled: boolean, bg: string, color: string, hasBorderLeft = false): React.CSSProperties => {
     return {
       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-      padding: '0 16px', border: 'none',
-      borderLeft: hasBorderLeft ? '1px solid var(--border)' : 'none',
-      background: enabled ? bg : 'transparent',
-      color: enabled ? color : 'var(--text-dim)',
+      padding: '0 14px', border: 'none',
+      borderLeft: hasBorderLeft ? '2px solid #808080' : 'none',
+      background: enabled ? bg : '#C0C0C0',
+      borderRight: '2px solid #808080',
+      borderTop: '2px solid #ffffff',
+      borderBottom: '2px solid #808080',
+      color: enabled ? color : '#808080',
       cursor: enabled ? 'pointer' : 'not-allowed',
-      fontSize: '13px', transition: 'background 0.15s, color 0.15s',
-      height: '100%', minWidth: '44px',
+      fontSize: '11px', fontWeight: 600,
+      fontFamily: '"MS Sans Serif", sans-serif',
+      height: '100%', minWidth: '40px',
     }
   }
 
   return (
     <div style={{
-      height: '52px',
+      height: '42px',
       display: 'flex',
-      borderTop: '1px solid var(--border)',
-      background: 'var(--bg-input)',
+      borderTop: '2px solid #ffffff',
+      background: '#C0C0C0',
       flexShrink: 0,
     }}>
-      {/* INPUT 标签 */}
+      {/* INPUT 标签 — 90s terminal style */}
       <div style={{
-        background: 'var(--text)', color: 'var(--bg-panel)',
-        padding: '0 14px',
+        background: '#000000', color: '#00FF00',
+        padding: '0 12px',
         fontFamily: "'Special Elite','Courier New',monospace",
         fontSize: '12px', fontWeight: 700,
         display: 'flex', alignItems: 'center',
-        letterSpacing: '0.08em', flexShrink: 0,
+        letterSpacing: '0.1em', flexShrink: 0,
+        borderRight: '2px solid #808080',
         opacity: canSend ? 1 : 0.5,
       }}>
-        INPUT
+        INPUT&gt;
       </div>
 
-      {/* 输入框 */}
+      {/* 输入框 — 90s bevel-in */}
       <input
         ref={inputRef}
         type="text"
@@ -94,11 +99,15 @@ export default function CommandBar() {
         disabled={!canSend}
         style={{
           flex: 1,
-          background: 'transparent', border: 'none',
-          color: 'var(--text)', fontSize: '14px',
-          padding: '0 14px', outline: 'none',
-          fontFamily: 'inherit',
+          background: '#ffffff',
+          border: '2px solid',
+          borderColor: '#808080 #ffffff #ffffff #808080',
+          boxShadow: 'inset 1px 1px 0 #404040, inset -1px -1px 0 #dfdfdf',
+          color: '#000', fontSize: '13px',
+          padding: '0 10px', outline: 'none',
+          fontFamily: '"MS Sans Serif", sans-serif',
           opacity: canSend ? 1 : 0.5,
+          margin: '4px 4px',
         }}
       />
 

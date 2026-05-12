@@ -36,26 +36,19 @@ export default function CharactersPanel() {
   }
 
   return (
-    <div style={{
+    <div className="bevel-out" style={{
       width: inspectorWidth, flexShrink: 0,
-      borderLeft: '1px solid #2e3250',
-      background: '#1a1d27',
+      background: '#C0C0C0',
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden', height: '100%',
     }}>
-      {/* 标题栏 */}
-      <div style={{
-        padding: '12px 16px', borderBottom: '1px solid #2e3250',
-        background: '#1e2130',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '16px' }}><Users size={16} color="#e8eaf0" /></span>
-          <span style={{ color: '#e8eaf0', fontWeight: 700, fontSize: '14px' }}>
-            角色设定
-          </span>
+      {/* 标题栏 — 90s */}
+      <div className="panel-header" style={{ padding: '4px 10px', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Users size={14} color="#ffffff" />
+          <span>角色设定</span>
         </div>
-        <button onClick={handleAdd} style={addBtnStyle}>+ 新建角色</button>
+        <button onClick={handleAdd} className="bevel-out" style={{ ...addBtnStyle, padding: '2px 8px', fontSize: '11px', background: '#C0C0C0', color: '#0000FF', border: '2px solid', borderColor: '#ffffff #808080 #808080 #ffffff' }}>+ 新建角色</button>
       </div>
 
       {/* 内容区 */}
@@ -67,7 +60,7 @@ export default function CharactersPanel() {
           overflow: 'auto', padding: '12px',
         }}>
           {characters.length === 0 ? (
-            <div style={{ color: '#4a5070', fontSize: '13px', textAlign: 'center', marginTop: '40px' }}>
+            <div style={{ color: '#808080', fontSize: '13px', textAlign: 'center', marginTop: '40px' }}>
               暂无角色，点击上方按钮新建
             </div>
           ) : (
@@ -103,19 +96,19 @@ function CharacterCard({
   return (
     <div
       onClick={onSelect}
+      className={isSelected ? 'bevel-in' : 'bevel-out'}
       style={{
-        padding: '12px', marginBottom: '8px', borderRadius: '8px',
-        border: `1px solid ${isSelected ? '#4f6ef7' : '#2e3250'}`,
-        background: isSelected ? '#1e2a4a' : '#131828',
-        cursor: 'pointer', transition: 'all 0.15s',
+        padding: '10px', marginBottom: '6px',
+        background: isSelected ? '#d0d0ff' : '#C0C0C0',
+        cursor: 'pointer',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ color: '#e8eaf0', fontWeight: 600, fontSize: '13px' }}>
+          <div style={{ color: '#000', fontWeight: 600, fontSize: '13px' }}>
             {character.name || character.id}
           </div>
-          <div style={{ color: '#4a5070', fontSize: '11px', fontFamily: 'monospace' }}>
+          <div style={{ color: '#808080', fontSize: '11px', fontFamily: '"Courier New", monospace' }}>
             {character.id}
           </div>
         </div>
@@ -126,15 +119,15 @@ function CharacterCard({
         >×</button>
       </div>
       {character.personality && (
-        <div style={{ color: '#8891b0', fontSize: '11px', marginTop: '6px', lineHeight: 1.4 }}>
+        <div style={{ color: '#444', fontSize: '11px', marginTop: '6px', lineHeight: 1.4 }}>
           {character.personality.slice(0, 60)}{character.personality.length > 60 ? '...' : ''}
         </div>
       )}
       <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
-        <span style={{ fontSize: '10px', color: '#4f6ef7', background: '#1e2a4a', padding: '1px 6px', borderRadius: '3px' }}>
+        <span className="bevel-out" style={{ fontSize: '10px', color: '#000080', padding: '1px 6px' }}>
           {character.secret_knowledge.length} 秘密
         </span>
-        <span style={{ fontSize: '10px', color: '#f5a623', background: '#2a2518', padding: '1px 6px', borderRadius: '3px' }}>
+        <span className="bevel-out" style={{ fontSize: '10px', color: '#800080', padding: '1px 6px' }}>
           {character.monologues.length} 独白
         </span>
       </div>
@@ -178,19 +171,21 @@ function CharacterEditor({ character }: { character: CharacterProfile }) {
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* 返回按钮 + 角色名（固定高度） */}
+      {/* 返回按钮 + 角色名 */}
       <div style={{
-        padding: '12px 16px', borderBottom: '1px solid #2e3250',
+        padding: '6px 10px', borderBottom: '2px solid #808080',
         display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0,
+        background: '#d0d0d0',
       }}>
         <button
           onClick={() => selectCharacter(null)}
+          className="bevel-out"
           style={{
-            background: 'none', border: '1px solid #2e3250', borderRadius: '4px',
-            color: '#8891b1', fontSize: '12px', padding: '2px 8px', cursor: 'pointer',
+            background: '#C0C0C0', fontSize: '11px', padding: '2px 8px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: '4px',
+            color: '#000', fontWeight: 600,
           }}
-        ><ChevronLeft size={14} /> 返回</button>
+        ><ChevronLeft size={12} /> 返回</button>
         <input
           value={form.name}
           onChange={(e) => set('name', e.target.value)}
@@ -198,7 +193,7 @@ function CharacterEditor({ character }: { character: CharacterProfile }) {
           placeholder="角色名称"
           style={{ ...inputStyle, flex: 1, fontWeight: 600 }}
         />
-        <span style={{ color: '#4a5070', fontSize: '11px', fontFamily: 'monospace' }}>
+        <span style={{ color: '#808080', fontSize: '11px', fontFamily: '"Courier New",monospace' }}>
           {form.id}
         </span>
       </div>
@@ -543,22 +538,23 @@ function CollapsibleSection({
   children: React.ReactNode
 }) {
   return (
-    <div style={{ border: '1px solid #2e3250', borderRadius: '6px', overflow: 'hidden' }}>
+    <div className="bevel-out" style={{ overflow: 'hidden', marginBottom: '6px' }}>
       <div
         onClick={onToggle}
         style={{
-          padding: '8px 12px', cursor: 'pointer',
-          background: expanded ? '#1e2130' : '#151828',
+          padding: '5px 10px', cursor: 'pointer',
+          background: expanded ? '#d0d0ff' : '#C0C0C0',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          fontFamily: '"MS Sans Serif", sans-serif',
         }}
       >
-        <span style={{ color: '#e8eaf0', fontSize: '12px', fontWeight: 600 }}>
+        <span style={{ color: '#000', fontSize: '11px', fontWeight: 600 }}>
           {expanded ? '▼ ' : '▶ '}{title}
         </span>
-        {subtitle && <span style={{ color: '#4a5070', fontSize: '10px' }}>{subtitle}</span>}
+        {subtitle && <span style={{ color: '#808080', fontSize: '10px' }}>{subtitle}</span>}
       </div>
       {expanded && (
-        <div style={{ padding: '10px 12px', borderTop: '1px solid #2e3250' }}>
+        <div style={{ padding: '10px 12px', borderTop: '2px solid #808080' }}>
           {children}
         </div>
       )}

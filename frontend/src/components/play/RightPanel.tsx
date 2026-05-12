@@ -1,502 +1,211 @@
 /**
- * RightPanel — 右栏组件（白底风格）
- * 包含：GAME LOG（系统事件日志） + DEBUG PANEL（可折叠）
+ * RightPanel — 90s Retro 右栏
+ * mockup 结构：GAME LOG + HIT COUNTER + 可折叠 DEBUG PANEL
  */
 import { useState } from 'react'
-import { Bug, ChevronDown, ChevronRight, X, Trash2, Send, ArrowDownCircle } from 'lucide-react'
+import { Bug, Trash2, ChevronDown, ChevronRight, Send, ArrowDownCircle } from 'lucide-react'
 import { usePlayStore } from '../../store/usePlayStore'
-import type { LlmDebugEntry, ChatMessage } from '../../store/usePlayStore'
 import { useStore } from '../../store/useStore'
+import type { ChatMessage, LlmDebugEntry } from '../../store/usePlayStore'
 
-// ── 颜色常量 ────────────────────────────────────────────────────────────────────
-const C = {
-  bg: 'var(--bg-panel)',
-  surface: 'var(--bg-surface)',
-  border: 'var(--border)',
-  muted: 'var(--text-dim)',
-  text: 'var(--text)',
-  textDim: 'var(--text-muted)',
-  accent: 'var(--accent)',
-  trip: 'var(--trip-color)',
-  grace: 'var(--grace-color)',
-  quality: 'var(--landmark-tag)',
-  flag: 'var(--storylet-tag)',
-  relationship: '#b04a7a',
-  good: 'var(--good)',
-  warn: 'var(--warn)',
-  danger: 'var(--danger)',
+// ── log 类型色 ──
+const TYPE_COLORS: Record<string, { bg: string; fg: string }> = {
+  storylet: { bg: '#f0e0ff', fg: '#800080' },
+  landmark: { bg: '#d0e8ff', fg: '#000080' },
+  llm:      { bg: '#FFFFCC', fg: '#6b4800' },
+  state:    { bg: '#d0ffe0', fg: '#006600' },
+  system:   { bg: '#e8e8e8', fg: '#444444' },
 }
 
-// ── 折叠区块 ──────────────────────────────────────────────────────────────────
-function Section({
-  title, color = C.accent, children, defaultOpen = true,
-}: {
-  title: string; color?: string; children: React.ReactNode; defaultOpen?: boolean
-}) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div style={{ borderBottom: `1px solid ${C.border}` }}>
-      <button
-        onClick={() => setOpen(!open)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: '6px',
-          padding: '8px 14px', background: 'none', border: 'none', cursor: 'pointer',
-          color: C.textDim, fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = C.text }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = C.textDim }}
-      >
-        {open
-          ? <ChevronDown size={12} style={{ color }} />
-          : <ChevronRight size={12} style={{ color }} />
-        }
-        <span style={{ color }}>{title}</span>
-      </button>
-      {open && <div style={{ padding: '0 14px 12px' }}>{children}</div>}
-    </div>
-  )
+function getSysType(speech: string | undefined): string {
+  if (!speech) return 'system'
+  if (speech.startsWith('[Storylet]')) return 'storylet'
+  if (speech.startsWith('[进入新阶段')) return 'landmark'
+  if (speech.startsWith('[LLM]')) return 'llm'
+  if (speech.startsWith('[Debug]')) return 'system'
+  return 'state'
 }
 
-// ── Chip 小标签 ───────────────────────────────────────────────────────────────
-function Chip({ label, color }: { label: string; color: string }) {
-  return (
-    <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '10px',
-      background: `${color}20`, color, fontSize: '11px', fontWeight: 500,
-    }}>
-      {label}
-    </span>
-  )
-}
-
-// ── 数值条 ────────────────────────────────────────────────────────────────────
-function NumberBar({
-  label, value, min = 0, max = 10, color, onChange,
-}: {
-  label: string; value: number; min?: number; max?: number; color: string;
-  onChange: (v: number) => void
-}) {
-  const pct = ((value - min) / (max - min)) * 100
-  const barColor = pct > 70 ? C.danger : pct > 40 ? C.warn : C.good
-
-  return (
-    <div style={{ marginBottom: '8px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-        <span style={{ fontSize: '12px', color: C.text }}>{label}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <input
-            type="number"
-            value={value}
-            min={min}
-            max={max}
-            onChange={(e) => {
-              const v = Number(e.target.value)
-              if (!isNaN(v)) onChange(Math.max(min, Math.min(max, v)))
-            }}
-            style={{
-              width: '38px', textAlign: 'center',
-              background: C.surface, border: `1px solid ${C.border}`,
-              color: color, borderRadius: '4px',
-              fontSize: '12px', padding: '1px 4px',
-            }}
-          />
-          <span style={{ fontSize: '10px', color: C.muted }}>/{max}</span>
-        </div>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={1}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={{ width: '100%', accentColor: barColor, cursor: 'pointer' }}
-      />
-      <div style={{ height: '3px', background: C.surface, borderRadius: '2px', marginTop: '2px' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: '2px', transition: 'width 0.2s' }} />
-      </div>
-    </div>
-  )
-}
-
-// ── Flag 开关 ─────────────────────────────────────────────────────────────────
-function FlagToggle({
-  label, value, onChange,
-}: {
-  label: string; value: boolean | string | number; onChange: (v: boolean) => void
-}) {
-  const boolVal = value === true || value === 'true'
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-      <span style={{ fontSize: '12px', color: boolVal ? C.text : C.muted }}>{label}</span>
-      <button
-        onClick={() => onChange(!boolVal)}
-        style={{
-          width: '34px', height: '18px', borderRadius: '9px',
-          border: 'none', cursor: 'pointer',
-          background: boolVal ? C.flag : C.surface,
-          position: 'relative', transition: 'background 0.2s',
-          flexShrink: 0,
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.1)' }}
-        onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
-      >
-        <span style={{
-          position: 'absolute', top: '2px',
-          left: boolVal ? '16px' : '2px',
-          width: '14px', height: '14px',
-          borderRadius: '50%', background: 'white',
-          transition: 'left 0.2s',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-        }} />
-      </button>
-    </div>
-  )
-}
-
-// ── 内心独白卡片 ──────────────────────────────────────────────────────────────
-function ThoughtCard({ name, thought, color }: { name: string; thought: string; color: string }) {
-  return (
-    <div style={{
-      background: `${color}0a`, border: `1px solid ${color}25`,
-      borderRadius: '6px', padding: '8px 10px', marginBottom: '6px',
-    }}>
-      <div style={{ fontSize: '10px', color: `${color}80`, fontWeight: 600, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-        {name} — 内心
-      </div>
-      <p style={{ margin: 0, fontSize: '12px', color: C.textDim, fontStyle: 'italic', lineHeight: '1.7' }}>
-        {thought}
-      </p>
-    </div>
-  )
-}
-
-// ── LLM 日志单条 ──────────────────────────────────────────────────────────
-function LlmLogItem({ entry, color }: { entry: LlmDebugEntry; color: string }) {
-  const [open, setOpen] = useState(false)
-  const isReq = entry.event === 'llm_request'
-  const label = isReq ? 'REQUEST' : 'RESPONSE'
-  const icon = isReq ? <Send size={10} /> : <ArrowDownCircle size={10} />
-
-  return (
-    <div style={{
-      marginBottom: '4px',
-      border: `1px solid ${isReq ? C.border : `${color}40`}`,
-      borderRadius: '4px',
-      overflow: 'hidden',
-    }}>
-      <button
-        onClick={() => setOpen(!open)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: '6px',
-          padding: '5px 8px', background: isReq ? C.surface : `${color}08`,
-          border: 'none', cursor: 'pointer', color: isReq ? C.textDim : color,
-          fontSize: '10px', fontWeight: 600, letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-        }}
-      >
-        {icon}
-        <span>{label}</span>
-        {entry.model && <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>{entry.model}</span>}
-        {entry.temperature != null && <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>t={entry.temperature}</span>}
-        {open ? <ChevronDown size={10} style={{ marginLeft: 'auto' }} /> : <ChevronRight size={10} style={{ marginLeft: 'auto' }} />}
-      </button>
-      {open && (
-        <div style={{ padding: '6px 8px', background: C.surface, maxHeight: '200px', overflowY: 'auto', scrollbarWidth: 'thin' }}>
-          {isReq && entry.messages && entry.messages.map((msg, i) => (
-            <div key={i} style={{ marginBottom: '6px' }}>
-              <div style={{ fontSize: '9px', color: C.muted, fontWeight: 600, marginBottom: '2px', textTransform: 'uppercase' }}>
-                {msg.role}
-              </div>
-              <pre style={{
-                margin: 0, padding: '4px 6px', borderRadius: '3px',
-                background: C.bg, color: C.text,
-                fontSize: '11px', lineHeight: '1.6', whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word', fontFamily: 'inherit',
-                borderLeft: `2px solid ${msg.role === 'system' ? C.flag : msg.role === 'assistant' ? color : C.muted}`,
-              }}>
-                {msg.content}
-              </pre>
-            </div>
-          ))}
-          {!isReq && entry.content && (
-            <pre style={{
-              margin: 0, padding: '4px 6px', borderRadius: '3px',
-              background: `${color}10`, color: color,
-              fontSize: '11px', lineHeight: '1.6', whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word', fontFamily: 'inherit',
-              borderLeft: `2px solid ${color}`,
-            }}>
-              {entry.content}
-            </pre>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── LLM 日志区块 ──────────────────────────────────────────────────────────
-function LlmLogSection() {
-  const debugLogs = usePlayStore((s) => s.debugLogs)
-  const clearDebugLogs = usePlayStore((s) => s.clearDebugLogs)
-
-  const requestCount = debugLogs.filter((l) => l.event === 'llm_request').length
-
-  return (
-    <Section title={`LLM 日志 (${requestCount})`} color={C.muted} defaultOpen={true}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-        <button
-          onClick={clearDebugLogs}
-          title="清空日志"
-          style={{
-            marginLeft: 'auto', background: 'none', border: 'none',
-            cursor: 'pointer', color: C.muted, padding: '2px',
-            display: 'flex', alignItems: 'center',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = C.danger }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = C.muted }}
-        >
-          <Trash2 size={11} />
-        </button>
-      </div>
-      <div style={{ maxHeight: '200px', overflowY: 'auto', scrollbarWidth: 'thin' }}>
-        {debugLogs.length === 0 ? (
-          <div style={{ fontSize: '11px', color: C.muted, fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>
-            等待 LLM 调用...
-          </div>
-        ) : (
-          debugLogs.map((entry) => (
-            <LlmLogItem
-              key={entry.id}
-              entry={entry}
-              color={entry.event === 'llm_request' ? C.accent : C.good}
-            />
-          ))
-        )}
-      </div>
-    </Section>
-  )
-}
-
-// ── GAME LOG 组件 ──────────────────────────────────────────────────────────
+// ── GAME LOG ──
 function GameLog() {
   const messages = usePlayStore((s) => s.messages)
   const turn = usePlayStore((s) => s.turn)
-
-  // 过滤 system 消息
-  const systemMessages: ChatMessage[] = messages.filter(m => m.role === 'system')
-  
-  // 获取最近的几条
-  const recentMessages = systemMessages.slice(-10)
-
-  // 获取 LLM 调用统计
-  const llmCount = messages.filter(m => m.role === 'system' && m.speech?.startsWith('[LLM]')).length
+  const systemMessages = messages.filter(m => m.role === 'system').slice(-30)
 
   return (
-    <div style={{ borderBottom: `1px solid ${C.border}` }}>
-      {/* Header */}
-      <div style={{
-        background: C.text, color: C.bg,
-        padding: '4px 10px', fontSize: '11px', fontWeight: 700,
-        letterSpacing: '0.1em', textTransform: 'uppercase',
-      }}>
-        GAME LOG
-      </div>
-      
-      {/* 内容 */}
-      <div style={{ padding: '10px 12px', maxHeight: '200px', overflowY: 'auto', scrollbarWidth: 'thin' }}>
-        {recentMessages.length === 0 ? (
-          <div style={{ fontSize: '11px', color: C.muted, fontStyle: 'italic', textAlign: 'center' }}>
-            等待事件...
-          </div>
-        ) : (
-          recentMessages.map((msg, i) => {
-            const systemType = msg.speech?.startsWith('[Storylet]') ? 'storylet'
-              : msg.speech?.startsWith('[进入新阶段') ? 'landmark'
-              : msg.speech?.startsWith('[LLM]') ? 'llm'
-              : 'plain'
-            
-            const color = systemType === 'storylet' ? C.flag
-              : systemType === 'landmark' ? C.quality
-              : systemType === 'llm' ? C.good
-              : C.muted
-
-            return (
-              <div key={msg.id} style={{ 
-                fontSize: '11px', 
-                color,
-                fontFamily: "'Menlo', 'Consolas', monospace",
-                padding: '2px 0',
-                borderBottom: i < recentMessages.length - 1 ? `1px solid ${C.border}` : 'none',
-              }}>
-                {msg.speech}
+    <div className="game-log">
+      {systemMessages.length === 0 ? (
+        <div className="log-entry" style={{ color: '#808080', fontStyle: 'italic' }}>
+          <div className="log-msg">等待系统事件…</div>
+        </div>
+      ) : (
+        systemMessages.map((msg, i) => {
+          const type = getSysType(msg.speech)
+          const c = TYPE_COLORS[type] || TYPE_COLORS.system
+          const cleanText = msg.speech?.replace(/^\[.*?\]\s*/, '') || ''
+          const lastTurn = i === systemMessages.length - 1 && turn > 0
+          return (
+            <div key={msg.id} className="log-entry"
+              style={lastTurn ? { background: '#fff8d0' } : undefined}>
+              <div className={`log-turn ${lastTurn ? 'blink' : ''}`} style={lastTurn ? { color:'#FF0000', animation:'blink 1s step-end infinite' } : undefined}>
+                T{turn || '?'}
               </div>
-            )
-          })
-        )}
-        
-        {/* LLM 统计 */}
-        {llmCount > 0 && (
-          <div style={{ 
-            marginTop: '8px', 
-            paddingTop: '8px', 
-            borderTop: `1px solid ${C.border}`,
-            fontSize: '10px',
-            color: C.muted,
-          }}>
-            LLM 调用: {llmCount} 次
-          </div>
+              <div className="log-msg">
+                <span className="log-type" style={{ background: c.bg, color: c.fg }}>
+                  {type.toUpperCase()}
+                </span>
+                {cleanText}
+              </div>
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
+// ── DEBUG PANEL（含 WorldState 编辑 + LLM 日志）──
+function DebugPanel() {
+  const [open, setOpen] = useState(false)
+  const connected = usePlayStore((s) => s.connected)
+  const connecting = usePlayStore((s) => s.connecting)
+  const isLoading = usePlayStore((s) => s.isLoading)
+  const messages = usePlayStore((s) => s.messages)
+  const turn = usePlayStore((s) => s.turn)
+  const worldState = usePlayStore((s) => s.worldState)
+  const setQuality = usePlayStore((s) => s.setQuality)
+  const setFlag = usePlayStore((s) => s.setFlag)
+  const setRelationship = usePlayStore((s) => s.setRelationship)
+  const debugLogs = usePlayStore((s) => s.debugLogs)
+  const clearDebugLogs = usePlayStore((s) => s.clearDebugLogs)
+  const wsd = useStore((s) => s.worldStateDefinition)
+
+  const wsState = connected ? 'CONNECTED' : connecting ? 'CONNECTING' : 'DISCONNECTED'
+  const wsColor = connected ? '#00AA00' : connecting ? '#b8860b' : '#FF0000'
+
+  return (
+    <div className="debug-section" style={{ maxHeight: open ? '600px' : '28px' }}>
+      <button className="debug-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span>{open ? '▼' : '▶'}</span>
+        <Bug size={11} /> DEBUG PANEL
+        <span style={{ marginLeft: 'auto', fontSize: '9px', fontWeight: 400, fontFamily: '"Courier New",monospace' }}>
+          [CLICK TO {open ? 'COLLAPSE' : 'EXPAND'}]
+        </span>
+      </button>
+      <div className="debug-body" style={{ display: open ? 'block' : 'none' }}>
+        {/* ── 运行状态 ── */}
+        <div className="panel-header-black" style={{ fontSize:'9px', padding:'2px 8px', margin:'-6px -8px 6px' }}>STATUS</div>
+        <div className="debug-entry"><span className="debug-key">ws</span><span className="debug-val" style={{ color: wsColor }}>{wsState}</span></div>
+        <div className="debug-entry"><span className="debug-key">loading</span><span className="debug-val" style={{ color: isLoading ? '#FF0000' : '#000' }}>{String(isLoading)}</span></div>
+        <div className="debug-entry"><span className="debug-key">turn</span><span className="debug-val">{turn}</span></div>
+        <div className="debug-entry"><span className="debug-key">messages</span><span className="debug-val">{messages.length}</span></div>
+
+        {/* ── World State ── */}
+        {(wsd?.qualities?.length || wsd?.flags?.length || wsd?.relationships?.length) ? (
+          <>
+            <div className="panel-header-black" style={{ fontSize:'9px', padding:'2px 8px', margin:'6px -8px 6px' }}>WORLD STATE</div>
+            {wsd.qualities?.map(q => (
+              <div key={q.key} className="debug-entry">
+                <span className="debug-key">{q.label}</span>
+                <input type="number" value={worldState.qualities[q.key] ?? q.initial} min={q.min??0} max={q.max??10}
+                  onChange={e => { const v = Number(e.target.value); if (!isNaN(v)) setQuality(q.key, Math.max(q.min??0, Math.min(q.max??10, v))) }}
+                  style={{ width:'42px', textAlign:'center', fontFamily:'"Courier New",monospace', fontSize:'10px', border:'1px solid #808080', background:'#fff', padding:'1px 2px' }} />
+              </div>
+            ))}
+            {wsd.flags?.map(f => (
+              <div key={f.key} className="debug-entry">
+                <span className="debug-key">{f.label}</span>
+                <button onClick={() => setFlag(f.key, !worldState.flags[f.key])}
+                  style={{ fontFamily:'"Courier New",monospace', fontSize:'10px', fontWeight:700, border:'1px solid #808080', background: worldState.flags[f.key] ? '#00FF00' : '#C0C0C0', color:'#000', padding:'0 4px', cursor:'pointer' }}>
+                  {String(!!worldState.flags[f.key])}
+                </button>
+              </div>
+            ))}
+            {wsd.relationships?.map(r => (
+              <div key={r.key} className="debug-entry">
+                <span className="debug-key">{r.label}</span>
+                <input type="number" value={worldState.relationships[r.key] ?? r.initial} min={r.min??0} max={r.max??10}
+                  onChange={e => { const v = Number(e.target.value); if (!isNaN(v)) setRelationship(r.key, Math.max(r.min??0, Math.min(r.max??10, v))) }}
+                  style={{ width:'42px', textAlign:'center', fontFamily:'"Courier New",monospace', fontSize:'10px', border:'1px solid #808080', background:'#fff', padding:'1px 2px' }} />
+              </div>
+            ))}
+          </>
+        ) : null}
+
+        {/* ── LLM 日志 ── */}
+        <div className="panel-header-black" style={{ fontSize:'9px', padding:'2px 8px', margin:'6px -8px 6px', display:'flex', justifyContent:'space-between' }}>
+          <span>LLM LOG ({debugLogs.length})</span>
+          <button onClick={clearDebugLogs} style={{ background:'none', border:'none', color:'#fff', cursor:'pointer', fontSize:'9px', padding:0, fontFamily:'"Courier New",monospace' }} title="清空">
+            <Trash2 size={10} />
+          </button>
+        </div>
+        {debugLogs.length === 0 ? (
+          <div style={{ fontSize:'10px', color:'#808080', fontStyle:'italic', textAlign:'center', padding:'6px 0' }}>等待 LLM 调用…</div>
+        ) : (
+          debugLogs.slice(-10).map(e => <LlmLogItem key={e.id} entry={e} />)
         )}
       </div>
     </div>
   )
 }
 
-// ── RightPanel 主体 ──────────────────────────────────────────────────────────
+// ── LLM 日志单条 ──
+function LlmLogItem({ entry }: { entry: LlmDebugEntry }) {
+  const [open, setOpen] = useState(false)
+  const isReq = entry.event === 'llm_request'
+  const label = isReq ? 'REQ' : 'RES'
+  const color = isReq ? '#0000FF' : '#00AA00'
+  return (
+    <div style={{ marginBottom:'3px', border:'1px solid #808080', overflow:'hidden' }}>
+      <button onClick={() => setOpen(!open)} style={{
+        width:'100%', display:'flex', alignItems:'center', gap:'4px',
+        padding:'3px 6px', background:'#d4d0cc', border:'none',
+        cursor:'pointer', color, fontSize:'10px', fontWeight:600,
+        fontFamily:'"Courier New",monospace', textTransform:'uppercase',
+      }}>
+        {isReq ? <Send size={9} /> : <ArrowDownCircle size={9} />}
+        {label} {entry.model && <span style={{color:'#808080', fontWeight:400, textTransform:'none'}}>{entry.model}</span>}
+        {open ? <ChevronDown size={9} style={{marginLeft:'auto'}} /> : <ChevronRight size={9} style={{marginLeft:'auto'}} />}
+      </button>
+      {open && (
+        <div style={{ padding:'4px 6px', background:'#e8e8e8', maxHeight:'140px', overflowY:'auto', fontFamily:'"Courier New",monospace', fontSize:'10px' }}>
+          {isReq && entry.messages?.map((m,i) => (
+            <div key={i} style={{marginBottom:'4px'}}>
+              <div style={{color:'#808080', fontSize:'9px', fontWeight:600}}>{m.role}</div>
+              <pre style={{margin:0, whiteSpace:'pre-wrap', wordBreak:'break-word', color:'#000', lineHeight:1.4}}>{m.content?.slice(0,300)}</pre>
+            </div>
+          ))}
+          {!isReq && entry.content && (
+            <pre style={{margin:0, whiteSpace:'pre-wrap', wordBreak:'break-word', color:color, lineHeight:1.4}}>{entry.content?.slice(0,500)}</pre>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── RightPanel ──
 export default function RightPanel() {
-  const [debugOpen, setDebugOpen] = useState(false)
-  const worldState = usePlayStore((s) => s.worldState)
-  const currentLandmark = usePlayStore((s) => s.currentLandmark)
-  const currentStorylet = usePlayStore((s) => s.currentStorylet)
-  const turn = usePlayStore((s) => s.turn)
-  const messages = usePlayStore((s) => s.messages)
-  const setQuality = usePlayStore((s) => s.setQuality)
-  const setFlag = usePlayStore((s) => s.setFlag)
-  const setRelationship = usePlayStore((s) => s.setRelationship)
-
-  const wsd = useStore((s) => s.worldStateDefinition)
-
-  const thoughtMsgs = [...messages].reverse().filter((m) => m.thought).slice(0, 3).reverse()
-
   return (
     <div style={{
-      width: debugOpen ? '300px' : '40px',
-      background: C.bg,
-      borderLeft: `1px solid ${C.border}`,
-      display: 'flex',
-      flexDirection: 'column',
-      overflowY: 'auto',
-      scrollbarWidth: 'thin',
-      flexShrink: 0,
-      transition: 'width 0.3s',
+      width: '240px', flexShrink: 0,
+      background: '#C0C0C0',
+      display: 'flex', flexDirection: 'column',
+      overflow: 'hidden',
     }}>
-      {/* 折叠/展开按钮 */}
-      <button
-        onClick={() => setDebugOpen(!debugOpen)}
-        title="切换调试面板"
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: '10px', borderBottom: `1px solid ${C.border}`,
-          background: C.surface, border: 'none', cursor: 'pointer',
-          color: debugOpen ? C.accent : C.textDim,
-          transition: 'color 0.2s',
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = C.accent }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = debugOpen ? C.accent : C.textDim }}
-      >
-        {debugOpen ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-        {debugOpen && (
-          <span style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em', marginLeft: '4px' }}>
-            DEBUG
-          </span>
-        )}
-      </button>
 
-      {/* 展开内容 */}
-      {debugOpen && (
-        <>
-          {/* GAME LOG */}
-          <GameLog />
+      {/* ── GAME LOG ── */}
+      <div className="panel-header">
+        📋 GAME LOG
+        <span style={{ marginLeft:'auto', fontFamily:'"Courier New",monospace', fontSize:'9px', fontWeight:400 }}>SYSTEM EVENTS</span>
+      </div>
+      <GameLog />
 
-          {/* 叙事状态 */}
-          <Section title="叙事状态" color={C.accent}>
-            <div style={{ marginBottom: '8px' }}>
-              <div style={{ fontSize: '11px', color: C.muted, marginBottom: '3px' }}>Turn {turn}</div>
-              {currentLandmark?.title && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  <Chip label={currentLandmark.title} color={currentLandmark.is_ending ? C.danger : C.accent} />
-                  {currentLandmark.phase_tag && <Chip label={currentLandmark.phase_tag} color={C.muted} />}
-                </div>
-              )}
-            </div>
-            {currentStorylet?.title && (
-              <div>
-                <div style={{ fontSize: '11px', color: C.muted, marginBottom: '3px' }}>当前 Storylet</div>
-                <Chip label={currentStorylet.title} color={C.warn} />
-              </div>
-            )}
-          </Section>
+      <div className="hr-groove" />
 
-          {/* Qualities */}
-          {wsd?.qualities?.length > 0 && (
-            <Section title="品质" color={C.quality}>
-              {wsd.qualities.map((q) => (
-                <NumberBar
-                  key={q.key}
-                  label={q.label}
-                  value={worldState.qualities[q.key] ?? q.initial}
-                  min={q.min ?? 0}
-                  max={q.max ?? 10}
-                  color={C.quality}
-                  onChange={(v) => setQuality(q.key, v)}
-                />
-              ))}
-            </Section>
-          )}
+      {/* ── DEBUG PANEL ── */}
+      <DebugPanel />
 
-          {/* Relationships */}
-          {wsd?.relationships?.length > 0 && (
-            <Section title="关系" color={C.relationship}>
-              {wsd.relationships.map((r) => (
-                <NumberBar
-                  key={r.key}
-                  label={r.label}
-                  value={worldState.relationships[r.key] ?? r.initial}
-                  min={r.min ?? 0}
-                  max={r.max ?? 10}
-                  color={C.relationship}
-                  onChange={(v) => setRelationship(r.key, v)}
-                />
-              ))}
-            </Section>
-          )}
-
-          {/* Flags */}
-          {wsd?.flags?.length > 0 && (
-            <Section title="标记" color={C.flag}>
-              {wsd.flags.map((f) => (
-                <FlagToggle
-                  key={f.key}
-                  label={f.label}
-                  value={worldState.flags[f.key] ?? f.initial}
-                  onChange={(v) => setFlag(f.key, v)}
-                />
-              ))}
-            </Section>
-          )}
-
-          {/* 内心独白 */}
-          {thoughtMsgs.length > 0 && (
-            <Section title="内心独白" color={C.trip} defaultOpen={true}>
-              {thoughtMsgs.map((m) => (
-                <ThoughtCard
-                  key={m.id}
-                  name={m.speakerName ?? ''}
-                  thought={m.thought!}
-                  color={m.role === 'trip' ? C.trip : C.grace}
-                />
-              ))}
-            </Section>
-          )}
-
-          {/* LLM 日志 */}
-          <LlmLogSection />
-
-          <div style={{ height: '20px' }} />
-        </>
-      )}
     </div>
   )
 }

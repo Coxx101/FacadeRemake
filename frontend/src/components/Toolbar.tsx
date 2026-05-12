@@ -179,12 +179,17 @@ export default function Toolbar() {
   }, [])
 
   return (
-    <header style={{
-      height: '52px', flexShrink: 0,
-      background: '#1e2130', borderBottom: '1px solid #2e3250',
-      display: 'flex', alignItems: 'center', padding: '0 16px', gap: '12px',
-      userSelect: 'none',
-    }}>
+    <header
+      className="title-bar"
+      style={{
+        height: '60px',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '0 6px',
+        gap: '12px',
+        userSelect: 'none',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
         <button
           onClick={() => setMode('home')}
@@ -193,24 +198,42 @@ export default function Toolbar() {
             display: 'flex', alignItems: 'center', gap: '8px',
             background: 'transparent', border: 'none',
             cursor: 'pointer', padding: '0',
+            fontFamily: '"MS Sans Serif", "Arial Black", sans-serif',
+            fontSize: '15px', fontWeight: 700,
           }}
         >
-          <LayoutDashboard size={20} color="#4f6ef7" strokeWidth={2.2} />
-          <span style={{ color: '#e8eaf0', fontWeight: 700, fontSize: '15px', letterSpacing: '-0.02em' }}>
-            Facade<span style={{ color: '#4f6ef7' }}>Studio</span>
+          <LayoutDashboard size={16} color="#ffffff" strokeWidth={2.2} />
+          <span style={{ color: '#fff', letterSpacing: '0.05em' }}>
+            Facade<span style={{ color: '#FFFF00' }}>Studio</span>
           </span>
         </button>
       </div>
 
-      <div style={{ display: 'flex', background: '#131828', border: '1px solid #2e3250', borderRadius: '8px', overflow: 'hidden' }}>
+      <div className="bevel-out" style={{ display: 'flex', overflow: 'hidden', padding: '1px' }}>
         {(['design', 'play'] as const).map((m) => (
           <button key={m} onClick={() => setMode(m)} style={{
-            padding: '6px 18px', background: mode === m ? '#4f6ef7' : 'none',
-            border: 'none', color: mode === m ? '#fff' : '#8891b0',
-            fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-            display: 'flex', alignItems: 'center', gap: '6px',
-          }}>
-            {m === 'design' ? <Wrench size={13} /> : <Gamepad2 size={13} />}
+            padding: '2px 14px',
+            background: mode === m ? '#000080' : '#C0C0C0',
+            border: 'none',
+            color: mode === m ? '#fff' : '#000',
+            fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '4px',
+            fontFamily: '"MS Sans Serif", sans-serif',
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.borderStyle = 'inset'
+            e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.borderStyle = 'outset'
+            e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderStyle = 'outset'
+            e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+          }}
+        >
+            {m === 'design' ? <Wrench size={12} /> : <Gamepad2 size={12} />}
             {m === 'design' ? 'Design' : 'Play'}
           </button>
         ))}
@@ -218,43 +241,87 @@ export default function Toolbar() {
 
       {mode === 'design' && (
         <>
-          <div style={{ width: '1px', height: '24px', background: '#2e3250', margin: '0 4px' }} />
-          <ToolButton icon={<Plus size={14} />} label="新建 Landmark" onClick={handleAddLandmark} color="#4f6ef7" />
-          <ToolButton icon={<Trash2 size={14} />} label="删除选中节点" onClick={handleDeleteSelected} color="#e74c3c"
+          <div className="bevel-in" style={{ width: '1px', height: '24px', margin: '0 4px' }} />
+          <ToolButton icon={<Plus size={14} />} label="新建 Landmark" onClick={handleAddLandmark} color="#0000FF" />
+          <ToolButton icon={<Trash2 size={14} />} label="删除选中节点" onClick={handleDeleteSelected} color="#FF0000"
             disabled={!selectedLandmarkId} />
-          <div style={{ width: '1px', height: '24px', background: '#2e3250', margin: '0 4px' }} />
-          <ToolButton icon={<Undo2 size={14} />} label="撤销 (Ctrl+Z)" onClick={handleUndo} color="#8891b0"
+          <div className="bevel-in" style={{ width: '1px', height: '24px', margin: '0 4px' }} />
+          <ToolButton icon={<Undo2 size={14} />} label="撤销 (Ctrl+Z)" onClick={handleUndo} color="#444444"
             disabled={_undoCount === 0} />
-          <ToolButton icon={<Redo2 size={14} />} label="重做 (Ctrl+Shift+Z)" onClick={handleRedo} color="#8891b0"
+          <ToolButton icon={<Redo2 size={14} />} label="重做 (Ctrl+Shift+Z)" onClick={handleRedo} color="#444444"
             disabled={_redoCount === 0} />
-          <div style={{ width: '1px', height: '24px', background: '#2e3250', margin: '0 4px' }} />
-          <div style={{ display: 'flex', background: '#131828', border: '1px solid #2e3250', borderRadius: '8px', overflow: 'hidden' }}>
+          <div className="bevel-in" style={{ width: '1px', height: '24px', margin: '0 4px' }} />
+          <div className="bevel-out" style={{ display: 'flex', overflow: 'hidden', padding: '1px' }}>
             <button onClick={() => setRightPanel('inspector')} style={{
-              padding: '5px 12px', background: rightPanel === 'inspector' ? '#4f6ef7' : 'none',
-              border: 'none', color: rightPanel === 'inspector' ? '#fff' : '#8891b0',
-              fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-              display: 'flex', alignItems: 'center', gap: '5px',
-            }}><LayoutDashboard size={13} /> 蓝图</button>
+              padding: '2px 10px',
+              background: rightPanel === 'inspector' ? '#0000FF' : '#C0C0C0',
+              border: 'none',
+              color: rightPanel === 'inspector' ? '#fff' : '#000',
+              fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+              fontFamily: '"MS Sans Serif", sans-serif',
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.borderStyle = 'inset'
+              e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.borderStyle = 'outset'
+              e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+            }}
+          ><LayoutDashboard size={12} /> 蓝图</button>
             <button onClick={() => setRightPanel('characters')} style={{
-              padding: '5px 12px', background: rightPanel === 'characters' ? '#f5a623' : 'none',
-              border: 'none', color: rightPanel === 'characters' ? '#fff' : '#8891b0',
-              fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-              display: 'flex', alignItems: 'center', gap: '5px',
-            }}><Users size={13} /> 角色</button>
+              padding: '2px 10px',
+              background: rightPanel === 'characters' ? '#FF0000' : '#C0C0C0',
+              border: 'none',
+              color: rightPanel === 'characters' ? '#fff' : '#000',
+              fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+              fontFamily: '"MS Sans Serif", sans-serif',
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.borderStyle = 'inset'
+              e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.borderStyle = 'outset'
+              e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+            }}
+          ><Users size={12} /> 角色</button>
             <button onClick={() => setRightPanel('worldstate')} style={{
-              padding: '5px 12px', background: rightPanel === 'worldstate' ? '#e67e22' : 'none',
-              border: 'none', color: rightPanel === 'worldstate' ? '#fff' : '#8891b0',
-              fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-              display: 'flex', alignItems: 'center', gap: '5px',
-            }}><Globe size={13} /> 变量</button>
+              padding: '2px 10px',
+              background: rightPanel === 'worldstate' ? '#FFFF00' : '#C0C0C0',
+              border: 'none',
+              color: rightPanel === 'worldstate' ? '#000' : '#000',
+              fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+              fontFamily: '"MS Sans Serif", sans-serif',
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.borderStyle = 'inset'
+              e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.borderStyle = 'outset'
+              e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+            }}
+          ><Globe size={12} /> 变量</button>
             <button onClick={() => setRightPanel('library')} style={{
-              padding: '5px 12px', background: rightPanel === 'library' ? '#27ae60' : 'none',
-              border: 'none', color: rightPanel === 'library' ? '#fff' : '#8891b0',
-              fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-              display: 'flex', alignItems: 'center', gap: '5px',
-            }}><Package size={13} /> 资源库</button>
+              padding: '2px 10px',
+              background: rightPanel === 'library' ? '#00AA00' : '#C0C0C0',
+              border: 'none',
+              color: rightPanel === 'library' ? '#fff' : '#000',
+              fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+              fontFamily: '"MS Sans Serif", sans-serif',
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.borderStyle = 'inset'
+              e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.borderStyle = 'outset'
+              e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+            }}
+          ><Package size={12} /> 资源库</button>
           </div>
-          <div style={{ width: '1px', height: '24px', background: '#2e3250', margin: '0 4px' }} />
+          <div className="bevel-in" style={{ width: '1px', height: '24px', margin: '0 4px' }} />
           <ToolButton icon={<FolderOpen size={14} />} label="导入 JSON" onClick={handleLoad} color="#8891b0" />
           <ToolButton icon={<Save size={14} />} label={isDirty ? '保存 JSON（有修改）' : '保存 JSON'} onClick={handleSave} color={isDirty ? '#2ecc71' : '#8891b0'} />
           {isDirty && <AlertTriangle size={14} color="#2ecc71" style={{ marginLeft: '-6px' }} title="有未保存的修改" />}
@@ -278,15 +345,42 @@ export default function Toolbar() {
 
 function ToolButton({ icon, label, onClick, color, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; color: string; disabled?: boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled} title={label} style={{
-      display: 'flex', alignItems: 'center', gap: '6px',
-      padding: '5px 12px', background: 'rgba(255,255,255,0.04)',
-      border: '1px solid #2e3250', borderRadius: '6px',
-      color: disabled ? '#4a5070' : color, fontSize: '12px', fontWeight: 500,
-      cursor: disabled ? 'not-allowed' : 'pointer', transition: 'all 0.15s', opacity: disabled ? 0.5 : 1,
-    }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
-      onMouseLeave={(e) => { if (!disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      className={disabled ? 'bevel-out' : 'bevel-out'}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '6px',
+        padding: '3px 10px',
+        background: disabled ? '#C0C0C0' : '#C0C0C0',
+        border: '2px solid',
+        borderColor: disabled ? '#ffffff #808080 #808080 #ffffff' : '#ffffff #808080 #808080 #ffffff',
+        color: disabled ? '#808080' : color,
+        fontSize: '11px', fontWeight: 600,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        fontFamily: '"MS Sans Serif", sans-serif',
+        userSelect: 'none',
+        opacity: disabled ? 0.5 : 1,
+      }}
+      onMouseDown={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
+          e.currentTarget.style.transform = 'translate(1px, 1px)'
+        }
+      }}
+      onMouseUp={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+          e.currentTarget.style.transform = 'translate(0, 0)'
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+          e.currentTarget.style.transform = 'translate(0, 0)'
+        }
+      }}
     >
       {icon}
       <span>{label}</span>
