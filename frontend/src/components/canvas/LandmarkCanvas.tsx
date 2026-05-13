@@ -299,20 +299,14 @@ export default function LandmarkCanvas() {
 
   return (
     <div ref={reactFlowWrapper} style={{ width: '100%', height: '100%' }}>
-      <svg style={{ position: 'absolute', width: 0, height: 0 }}>
-        <defs>
-          {[
-            { id: 'arrow-condition', color: '#2ecc71' },
-            { id: 'arrow-count',     color: '#f1c40f' },
-            { id: 'arrow-fallback',  color: '#e74c3c' },
-            { id: 'arrow-turnlimit', color: '#e67e22' },
-          ].map(({ id, color }) => (
-            <marker key={id} id={id} markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-              <polygon points="0 0, 10 3.5, 0 7" fill={color} />
-            </marker>
-          ))}
-        </defs>
-      </svg>
+    <svg style={{ position: 'absolute', width: 0, height: 0 }}>
+      <defs>
+        {/* 90s风格：统一黑色箭头 */}
+        <marker id="arrow-black" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#000000" />
+        </marker>
+      </defs>
+    </svg>
 
       <ReactFlow
         nodes={nodes}

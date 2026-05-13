@@ -70,7 +70,7 @@ const LandmarkNode = memo(({ data, selected }: NodeProps) => {
       
       {/* 标题栏 */}
       <div className="panel-header" style={{ margin: '-3px -3px 6px', fontSize: '11px' }}>
-        <span style={{ width: '8px', height: '8px', background: selected ? '#0000FF' : '#808080', flexShrink: 0, display: 'inline-block' }} />
+        <span style={{ width: '8px', height: '8px', background: selected ? '#FFFF00' : '#808080', flexShrink: 0, display: 'inline-block' }} />
         <span style={{ fontFamily: '"Courier New", monospace', letterSpacing: '0.05em' }}>{landmark.phase_tag}</span>
       </div>
       

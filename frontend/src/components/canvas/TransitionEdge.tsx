@@ -1,14 +1,7 @@
-import { BaseEdge, EdgeLabelRenderer, getBezierPath } from '@xyflow/react'
+import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@xyflow/react'
 import type { EdgeProps } from '@xyflow/react'
 
-const EDGE_COLORS: Record<string, string> = {
-  condition: '#2ecc71',
-  count:     '#f1c40f',
-  fallback:  '#e74c3c',
-  turnlimit: '#e67e22',
-}
-
-/** 非条件线（兜底/计数/回合限制）用虚线，降低视觉权重 */
+/** 90s Windows 风格边颜色：统一为黑色 */
 const DASHED_TYPES = new Set(['fallback', 'count', 'turnlimit'])
 
 export default function TransitionEdge({
@@ -17,11 +10,14 @@ export default function TransitionEdge({
 }: EdgeProps) {
   const edgeType = (data as Record<string, unknown>)?.edgeType as string ?? 'condition'
   const label    = (data as Record<string, unknown>)?.label as string | undefined
-  const color    = EDGE_COLORS[edgeType] ?? '#4f6ef7'
+  /** 90s风格：统一黑色连线 */
+  const color    = '#000000'
+  /** 虚线类型：兜底/计数/回合限制 */
   const isDashed = DASHED_TYPES.has(edgeType)
 
-  const [edgePath, labelX, labelY] = getBezierPath({
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+    borderRadius: 0,  /** 90s风格：直角连线 */
   })
 
   return (
@@ -29,10 +25,10 @@ export default function TransitionEdge({
       <BaseEdge id={id} path={edgePath} style={{
         stroke: color,
         strokeWidth: selected ? 2.5 : 1.8,
-        opacity: selected ? 1 : (isDashed ? 0.75 : 0.75),
+        opacity: 1,  /** 90s风格：无透明度变化 */
         strokeDasharray: isDashed ? '6 4' : 'none',
-        filter: selected ? `drop-shadow(0 0 4px ${color})` : 'none',
-      }} markerEnd={`url(#arrow-${edgeType})`} />
+        /** 90s风格：无阴影效果 */
+      }} markerEnd={`url(#arrow-black)`} />  /** 统一使用黑色箭头 */
 
       {label && !isDashed && (
         <EdgeLabelRenderer>
@@ -42,11 +38,12 @@ export default function TransitionEdge({
             pointerEvents: 'all',
           }}>
             <div style={{
-              background: '#1a1d27', border: `1px solid ${color}`,
-              borderRadius: '4px', padding: '2px 7px',
-              fontSize: '11px', color, fontWeight: 500,
+              background: '#ffffff',  /** 90s风格：白底 */
+              border: '2px solid #808080',  /** bevel-out 风格边框 */
+              padding: '2px 7px',
+              fontSize: '11px', color: '#000000', fontWeight: 500,
               whiteSpace: 'nowrap',
-              opacity: isDashed ? 0.6 : 0.9,
+              /** 90s风格：无圆角、无阴影 */
             }}>
               {label}
             </div>

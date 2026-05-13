@@ -291,7 +291,6 @@ function LlmLogSection() {
         style={{
           maxHeight: '400px',
           overflowY: 'auto',
-        }}>
         }}
       >
         {debugLogs.length === 0 ? (

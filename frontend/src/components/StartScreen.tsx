@@ -1,16 +1,10 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import {
   Plus, FileText, Pencil, Play, Trash2, FolderOpen,
   LayoutDashboard, Clock, MoreHorizontal,
 } from 'lucide-react'
 import { useProjectStore } from '../store/useProjectStore'
 import { useStore } from '../store/useStore'
-import {
-  defaultLandmarks, defaultStorylets, defaultCharacters,
-  defaultSharedContext, defaultWorldStateDefinition,
-  defaultActionLibrary, defaultExpressionLibrary,
-  defaultPropLibrary, defaultLocationLibrary,
-} from '../data/defaults'
 import type { AppMode } from '../types'
 
 interface StartScreenProps {
@@ -21,84 +15,7 @@ export default function StartScreen({ onEnterProject }: StartScreenProps) {
   const projects = useProjectStore((s) => s.projects)
   const createProject = useProjectStore((s) => s.createProject)
   const deleteProject = useProjectStore((s) => s.deleteProject)
-  const saveProjectSnapshot = useProjectStore((s) => s.saveProjectSnapshot)
   const loadFromJSON = useStore((s) => s.loadFromJSON)
-
-  // ── 初始化项目数据：只为缺失数据的项目填充默认值 ──
-  useEffect(() => {
-    const store = useProjectStore.getState()
-    for (const p of store.projects) {
-      const snapshot = p.snapshot
-      // 检查项目是否需要初始化（locationLibrary 为空数组或未定义）
-      const needsInit = !snapshot.locationLibrary || snapshot.locationLibrary.length === 0
-      if (needsInit) {
-        saveProjectSnapshot(p.id, {
-          landmarks: defaultLandmarks,
-          storylets: defaultStorylets,
-          characters: defaultCharacters,
-          sharedContext: defaultSharedContext,
-          worldStateDefinition: defaultWorldStateDefinition,
-          actionLibrary: defaultActionLibrary,
-          expressionLibrary: defaultExpressionLibrary,
-          propLibrary: defaultPropLibrary,
-          locationLibrary: defaultLocationLibrary,
-        })
-      }
-    }
-  }, [])
-
-  // ── 进入 Play 模式前同步初始化项目数据（确保默认值已填充） ──
-  const handleEnterPlay = useCallback((projectId: string) => {
-    const project = useProjectStore.getState().getProject(projectId)
-    if (!project) return
-
-    // 同步检查并初始化缺失的数据
-    const snapshot = project.snapshot
-    if (!snapshot.locationLibrary || snapshot.locationLibrary.length === 0) {
-      saveProjectSnapshot(projectId, {
-        landmarks: defaultLandmarks,
-        storylets: defaultStorylets,
-        characters: defaultCharacters,
-        sharedContext: defaultSharedContext,
-        worldStateDefinition: defaultWorldStateDefinition,
-        actionLibrary: defaultActionLibrary,
-        expressionLibrary: defaultExpressionLibrary,
-        propLibrary: defaultPropLibrary,
-        locationLibrary: defaultLocationLibrary,
-      })
-      // 重新获取更新后的项目
-      const updatedProject = useProjectStore.getState().getProject(projectId)
-      if (updatedProject) {
-        loadFromJSON(
-          updatedProject.snapshot.landmarks,
-          updatedProject.snapshot.storylets,
-          updatedProject.snapshot.characters,
-          updatedProject.snapshot.sharedContext,
-          updatedProject.snapshot.worldStateDefinition,
-          updatedProject.snapshot.actionLibrary,
-          updatedProject.snapshot.expressionLibrary,
-          updatedProject.snapshot.propLibrary,
-          updatedProject.snapshot.locationLibrary,
-        )
-      }
-    } else {
-      // 项目已有数据，直接加载
-      loadFromJSON(
-        snapshot.landmarks,
-        snapshot.storylets,
-        snapshot.characters,
-        snapshot.sharedContext,
-        snapshot.worldStateDefinition,
-        snapshot.actionLibrary,
-        snapshot.expressionLibrary,
-        snapshot.propLibrary,
-        snapshot.locationLibrary,
-      )
-    }
-
-    useStore.setState({ currentProjectId: projectId })
-    onEnterProject('play')
-  }, [loadFromJSON, onEnterProject])
 
   // ── 新建项目对话框 ──
   const [showNewDialog, setShowNewDialog] = useState(false)
@@ -109,25 +26,13 @@ export default function StartScreen({ onEnterProject }: StartScreenProps) {
     const name = newName.trim()
     if (!name) return
     const project = createProject(name, newDesc.trim())
-    // 加载该项目数据到主 store（使用默认值初始化）
-    loadFromJSON(
-      defaultLandmarks,
-      defaultStorylets,
-      defaultCharacters,
-      defaultSharedContext,
-      defaultWorldStateDefinition,
-      defaultActionLibrary,
-      defaultExpressionLibrary,
-      defaultPropLibrary,
-      defaultLocationLibrary,
-    )
-    // 设置当前项目 ID 供保存时使用
+    // 创建空项目，不加载默认数据
     useStore.setState({ currentProjectId: project.id })
     setNewName('')
     setNewDesc('')
     setShowNewDialog(false)
     onEnterProject('design')
-  }, [newName, newDesc, createProject, loadFromJSON, onEnterProject])
+  }, [newName, newDesc, createProject, onEnterProject])
 
   const handleEnterDesign = useCallback((projectId: string) => {
     const project = useProjectStore.getState().getProject(projectId)
@@ -146,6 +51,25 @@ export default function StartScreen({ onEnterProject }: StartScreenProps) {
     )
     useStore.setState({ currentProjectId: projectId })
     onEnterProject('design')
+  }, [loadFromJSON, onEnterProject])
+
+  const handleEnterPlay = useCallback((projectId: string) => {
+    const project = useProjectStore.getState().getProject(projectId)
+    if (!project) return
+    const { snapshot } = project
+    loadFromJSON(
+      snapshot.landmarks,
+      snapshot.storylets,
+      snapshot.characters,
+      snapshot.sharedContext,
+      snapshot.worldStateDefinition,
+      snapshot.actionLibrary,
+      snapshot.expressionLibrary,
+      snapshot.propLibrary,
+      snapshot.locationLibrary,
+    )
+    useStore.setState({ currentProjectId: projectId })
+    onEnterProject('play')
   }, [loadFromJSON, onEnterProject])
 
   const handleDelete = useCallback((e: React.MouseEvent, projectId: string, projectName: string) => {
