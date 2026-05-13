@@ -80,7 +80,6 @@ function cleanLandmark(lm: Landmark, validKeys: Set<string>, renameMap: Map<stri
       ...tr,
       conditions: cleanConditions(tr.conditions, validKeys, renameMap),
     })),
-    world_state_effects_on_enter: cleanEffects(lm.world_state_effects_on_enter, validKeys, renameMap),
   }
 }
 

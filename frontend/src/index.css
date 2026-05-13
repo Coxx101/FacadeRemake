@@ -562,8 +562,7 @@ button:focus-visible {
 }
 /* ── DEBUG PANEL ───────────────────────── */
 .debug-section {
-  flex-shrink: 0; border-top: 2px solid #808080;
-  overflow: hidden; transition: max-height 0.1s;
+  border-top: 2px solid #808080;
 }
 .debug-toggle {
   width: 100%; background: #000000; color: #ffffff;
@@ -576,7 +575,7 @@ button:focus-visible {
 .debug-toggle:hover { background: #222; }
 .debug-toggle:focus-visible { outline: 2px dotted #fff; outline-offset: 2px; }
 .debug-body {
-  background: #C0C0C0; max-height: 180px; overflow-y: auto;
+  background: #C0C0C0; overflow-y: auto;
   scrollbar-width: auto; scrollbar-color: #808080 #C0C0C0;
   padding: 6px 8px; font-family: "Courier New", monospace; font-size: 11px;
 }

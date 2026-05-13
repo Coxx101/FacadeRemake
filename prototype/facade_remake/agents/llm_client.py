@@ -104,9 +104,14 @@ class LLMClient:
     def chat_completion(self, messages: List[Dict[str, str]],
                        temperature: float = 0.7,
                        max_tokens: Optional[int] = None,
+                       debug_tag: str = "",
                        **extra_kwargs) -> str:
-        """调用聊天补全 API"""
-        # 完整的 messages 用于日志（不截断）
+        """
+        调用聊天补全 API
+
+        Args:
+            debug_tag: 组件标签，如 "InputParser/Gate1", "Director/BeatPlan"
+        """
         log_messages = [{"role": msg.get("role", "?"), "content": msg.get("content", "")} for msg in messages]
 
         self._emit_debug("llm_request", {
@@ -117,6 +122,7 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
             "messages": log_messages,
+            "component": debug_tag,
         })
 
         kwargs = {
@@ -135,6 +141,7 @@ class LLMClient:
             self._emit_debug("llm_response", {
                 "_print": f"  [LLM Response] {content}\n  {'-'*60}",
                 "content": content,
+                "component": debug_tag,
             })
 
             return content
@@ -146,7 +153,7 @@ class LLMClient:
             return '[{"speaker": "trip", "addressee": "player", "intent": "等待玩家反应", "urgency": "medium", "world_state_delta": {}, "state_change_hint": "气氛微妙"}]'
 
     def call_llm(self, prompt: str, max_tokens: Optional[int] = None,
-                 temperature: float = 0.3) -> str:
+                 temperature: float = 0.3, debug_tag: str = "") -> str:
         """单 prompt 调用（用于简单评估）"""
         messages = [{"role": "user", "content": prompt}]
-        return self.chat_completion(messages, temperature=temperature, max_tokens=max_tokens)
+        return self.chat_completion(messages, temperature=temperature, max_tokens=max_tokens, debug_tag=debug_tag)

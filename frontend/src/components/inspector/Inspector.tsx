@@ -170,16 +170,6 @@ function PropertiesTab({
       </Field>
 
       <div style={{ display: 'flex', gap: '10px' }}>
-        <Field label="Max Storylets" style={{ flex: 1 }}>
-          <input
-            type="number" min={1}
-            value={form.max_storylets ?? ''}
-            onChange={(e) => set('max_storylets', e.target.value ? Number(e.target.value) : undefined)}
-            onBlur={save}
-            style={inputStyle}
-            placeholder="无限制"
-          />
-        </Field>
         <Field label="是否结局" style={{ flex: 1 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', cursor: 'pointer' }}>
             <input
@@ -208,16 +198,6 @@ function PropertiesTab({
 
       <SectionTitle>叙事约束</SectionTitle>
 
-      <Field label="允许的 Storylet 标签">
-        <TagInput
-          tags={form.narrative_constraints?.allowed_storylet_tags ?? []}
-          onChange={(tags) => {
-            set('narrative_constraints', { ...form.narrative_constraints, allowed_storylet_tags: tags })
-            setTimeout(save, 50)
-          }}
-        />
-      </Field>
-
       <Field label="禁止揭露的信息">
         <TagInput
           tags={form.narrative_constraints?.forbidden_reveals ?? []}
@@ -227,12 +207,6 @@ function PropertiesTab({
           }}
         />
       </Field>
-
-      <SectionTitle>进入时世界状态效果</SectionTitle>
-      <EffectListEditor
-        effects={form.world_state_effects_on_enter ?? []}
-        onChange={(effects) => { set('world_state_effects_on_enter', effects); setTimeout(save, 50) }}
-      />
     </div>
   )
 }

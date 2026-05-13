@@ -17,14 +17,10 @@ export interface WorldStateEffect {
 export interface LandmarkTransition {
   target_id: string
   conditions: Condition[]
-  turn_limit?: number
-  storylet_count?: number
-  is_fallback: boolean
   label: string
 }
 
 export interface NarrativeConstraints {
-  allowed_storylet_tags?: string[]
   forbidden_reveals?: string[]
 }
 
@@ -36,9 +32,7 @@ export interface Landmark {
   is_ending: boolean
   ending_content: string
   transitions: LandmarkTransition[]
-  max_storylets?: number
   narrative_constraints: NarrativeConstraints
-  world_state_effects_on_enter: WorldStateEffect[]
   fallback_storylet?: string
   // 布局信息（仅前端使用，不导出到 Python）
   position?: { x: number; y: number }
@@ -77,7 +71,6 @@ export interface Storylet {
   narrative_goal: string
   // 前置条件
   conditions: Condition[]
-  llm_trigger?: string
   // 内容
   content: Record<string, unknown>
   // 后置效果

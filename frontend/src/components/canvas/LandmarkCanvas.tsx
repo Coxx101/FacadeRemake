@@ -37,11 +37,7 @@ function landmarksToEdges(landmarks: Landmark[]): Edge[] {
   for (const lm of landmarks) {
     for (let i = 0; i < lm.transitions.length; i++) {
       const t = lm.transitions[i]
-      let edgeType: 'condition' | 'count' | 'fallback' | 'turnlimit' = 'condition'
-      if (t.is_fallback) edgeType = 'fallback'
-      else if (t.storylet_count != null) edgeType = 'count'
-      else if (t.turn_limit != null) edgeType = 'turnlimit'
-      else if (t.conditions.length > 0) edgeType = 'condition'
+      const edgeType: 'condition' = 'condition'
 
       edges.push({
         id: `${lm.id}->${t.target_id}-${i}`,
@@ -51,7 +47,6 @@ function landmarksToEdges(landmarks: Landmark[]): Edge[] {
         targetHandle: 'target',
         type: 'transition',
         data: { label: t.label || undefined, edgeType },
-        animated: t.is_fallback,
       })
     }
   }

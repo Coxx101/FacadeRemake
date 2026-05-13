@@ -1,11 +1,20 @@
 """
-GameEngine - 核心游戏逻辑
-包含游戏状态管理、Storylet 切换、Beat 调度等核心业务逻辑
+GameEngine - v2.0 核心游戏逻辑
+叙事流转委托给 NarrativeOrchestrator，main loop 简化为协调调度
+
+变更：
+  - 新增 NarrativeOrchestrator + GameLogWriter
+  - 重构 handle_player_input(): 三层门控 + 按需 BeatPlan 刷新
+  - 废弃 _check_and_handle_transitions / _should_switch_storylet / _switch_to_storylet
+  - 对话历史迁移到 StateManager
+  - conversation_history → state_manager.get_conversation_history()
 """
 import asyncio
 from typing import List, Dict, Any, Optional
 
 from facade_remake.core.di_container import DIContainer
+from facade_remake.core.narrative_orchestrator import NarrativeOrchestrator, NarrativeEventType
+from facade_remake.core.game_log_writer import GameLogWriter
 from facade_remake.engine.output import (
     game_banner, character_speaking_hint, character_line, waiting_for_player,
     narrator_text, state_change, system_message, debug_message, reading_delay_info,
@@ -13,21 +22,10 @@ from facade_remake.engine.output import (
     show_status, player_silence, input_rejected
 )
 
-
-URGENCY_DELAY = {
-    "high":   1.0,
-    "medium": 2.0,
-    "low":    3.0,
-}
-
+URGENCY_DELAY = {"high": 1.0, "medium": 2.0, "low": 3.0}
 _READING_CHARS_PER_SEC = 6.0
 _READING_BASE_SEC = 1.0
-_URGENCY_LIMITS = {
-    "high":   (1.0, 4.0),
-    "medium": (1.5, 7.0),
-    "low":    (2.0, 10.0),
-}
-
+_URGENCY_LIMITS = {"high": (1.0, 4.0), "medium": (1.5, 7.0), "low": (2.0, 10.0)}
 PLAYER_TURN_TIMEOUT = 45.0
 
 
@@ -50,32 +48,38 @@ class GameEngine:
         self.state_manager = self.container.state_manager
         self.logger = self.container.logger
         self.llm_client = self.container.llm_client
-        self.condition_store = self.container.condition_store
         self.storylet_manager = self.container.storylet_manager
         self.landmark_manager = self.container.landmark_manager
         self.location_manager = self.container.location_manager
 
-        # 动态角色管理 - 支持任意数量的自定义角色
         self._character_agents: Dict[str, Any] = {}
-
-        # 延迟初始化依赖场景配置的组件
         self._input_parser = None
         self._story_selector = None
         self._director = None
 
-        # 如果有 scenario_config，立即初始化所有组件
+        # ── v2.0 新增 ──
+        self.game_log_writer = GameLogWriter(llm_client=self.llm_client)
+        self.narrative_orchestrator = NarrativeOrchestrator(
+            landmark_manager=self.landmark_manager,
+            storylet_manager=self.storylet_manager,
+            story_selector=None,  # 延迟绑定
+            director=None,        # 延迟绑定
+            state_manager=self.state_manager,
+            game_log_writer=self.game_log_writer
+        )
+
         if self._has_scenario_config:
             self.input_parser = self.container.input_parser
             self.story_selector = self.container.story_selector
             self.director = self.container.director
-            # 从场景配置加载角色
             for char_id in self.container.list_characters():
                 self._character_agents[char_id] = self.container.get_character_agent(char_id)
+            self._bind_v2_components()
 
         self.state_manager.add_change_listener(self._on_state_change)
 
         self.current_turn = 0
-        self.conversation_history: List[str] = []
+        self.conversation_history: List[str] = []  # 保留兼容，新代码走 state_manager
         self.current_storylet = None
         self.storylet_turn_count = 0
         self.storylet_start_turn = 0
@@ -92,14 +96,29 @@ class GameEngine:
         self.last_beat_char_count = 0
         self._player_turn_active = False
 
-        # 如果有 scenario_config，设置初始 landmark
         if self._has_scenario_config:
             self.landmark_manager.set_current("lm_1_arrive", self.world_state)
+            self.narrative_orchestrator.bind()
+
+    def _bind_v2_components(self):
+        """绑定 v2.0 组件之间的引用"""
+        self.narrative_orchestrator.story_selector = self.story_selector
+        self.narrative_orchestrator.director = self.director
+        self.narrative_orchestrator.bind()
+        # 注入依赖到 InputParser
+        if self._input_parser:
+            self._input_parser.inject_dependencies(
+                storylet_manager=self.storylet_manager,
+                goal_tracker=self.director.goal_tracker if self.director else None
+            )
+
+    # ── 属性 ─────────────────────────────────────────────────────────
 
     @property
     def input_parser(self):
         if self._input_parser is None:
             self._input_parser = self.container.input_parser
+            self._bind_v2_components()
         return self._input_parser
 
     @input_parser.setter
@@ -126,12 +145,10 @@ class GameEngine:
     def director(self, value):
         self._director = value
 
-    # ─── 动态角色管理接口 ──────────────────────────────────────────────────────
+    # ── 角色管理 ─────────────────────────────────────────────────────
 
     def get_character_agent(self, character_id: str):
-        """获取指定角色的 Agent"""
         if character_id not in self._character_agents:
-            # 尝试从容器获取
             if self.container.has_character(character_id):
                 agent = self.container.get_character_agent(character_id)
                 self._character_agents[character_id] = agent
@@ -140,30 +157,22 @@ class GameEngine:
         return self._character_agents[character_id]
 
     def register_character_agent(self, character_id: str, agent):
-        """注册角色 Agent"""
         self._character_agents[character_id] = agent
 
     def list_characters(self) -> List[str]:
-        """获取所有已注册角色的 ID 列表"""
         return list(self._character_agents.keys())
 
     def has_character(self, character_id: str) -> bool:
-        """检查角色是否已注册"""
         return character_id in self._character_agents
 
     def clear_characters(self):
-        """清除所有角色 Agent"""
         self._character_agents.clear()
 
     def update_characters_from_container(self):
-        """从容器同步角色列表"""
         self._character_agents.clear()
         for char_id in self.container.list_characters():
             self._character_agents[char_id] = self.container.get_character_agent(char_id)
-
-    @director.setter
-    def director(self, value):
-        self._director = value
+        self._bind_v2_components()
 
     def _on_state_change(self, delta: Dict[str, Any], hint: str):
         self.logger.record_state_change(delta)
@@ -179,21 +188,19 @@ class GameEngine:
         except RuntimeError:
             pass
 
+    # ── BeatPlan 管理 ────────────────────────────────────────────────
+
     async def _refresh_beat_plan(self):
         if not self.current_storylet:
             return
-
         self.current_beat_plan = []
         self.beat_index = 0
 
-        # 【新增】获取位置信息用于传递给 Director
         entity_locations = {}
         all_locations = []
         if self.location_manager:
             entity_locations = self.location_manager.get_all_entity_locations()
-            # 添加玩家位置到 world_state
             player_loc = self.location_manager.get_player_location()
-            # 复制 world_state 字典并添加 player_location
             ws_dict = self.world_state.to_dict()
             ws_dict["player_location"] = player_loc
             all_locations = self.location_manager.get_all_locations()
@@ -206,7 +213,7 @@ class GameEngine:
                 lambda: self.director.generate_beat_plan(
                     self.current_storylet.content,
                     ws_dict,
-                    self.conversation_history,
+                    self.state_manager.get_conversation_history(),
                     entity_locations,
                     all_locations,
                 )
@@ -226,212 +233,253 @@ class GameEngine:
                     old_narrative_goal=old_storylet.narrative_goal if old_storylet else "",
                     new_narrative_goal=new_storylet.narrative_goal if new_storylet else "",
                     world_state=self.world_state.to_dict(),
-                    dialogue_history=self.conversation_history,
+                    dialogue_history=self.state_manager.get_conversation_history(),
                     is_landmark_switch=is_landmark_switch,
                 )
             )
-
             for beat in beats:
                 if beat.get("speaker") == "narrator":
-                    content = beat.get("content", "")
-                    narrator_text(content)
+                    narrator_text(beat.get("content", ""))
                 elif beat.get("speaker") == "player_turn":
                     waiting_for_player()
                     break
                 else:
                     speaker = beat.get("speaker", "trip")
-                    self._generate_character_response(
-                        speaker, "",
-                        new_storylet.content if new_storylet else {},
+                    self._execute_storylet(
                         beat_intent=beat.get("intent", ""),
+                        speaker=speaker,
                         addressee=beat.get("addressee", ""),
                     )
-
                 delta = beat.get("world_state_delta", {})
-                hint = beat.get("state_change_hint", "")
                 if delta:
-                    self._apply_raw_delta(delta, hint)
-
+                    self._apply_raw_delta(delta, beat.get("state_change_hint", ""))
         except Exception as e:
             self.logger.error(f"衔接 BeatPlan 执行失败: {e}", module="transition", exception=e)
 
-    def _apply_beat_delta(self, player_input: str, beat: Dict = None):
-        if not self.effect_trends:
-            return
+    # ── v2.0 核心：玩家输入处理 ──────────────────────────────────────
 
-        predicted_delta = beat.get("world_state_delta", {}) if beat else {}
-        hint = beat.get("state_change_hint", "") if beat else ""
+    def _emit_pipeline(self, step: str, result: str, detail: str = ""):
+        """发送流水线调试事件到前端"""
+        if self.event_loop:
+            self.event_loop.emit("pipeline_event", {
+                "turn": self.current_turn,
+                "step": step,
+                "result": result,
+                "detail": detail,
+            })
 
-        actual_delta = self.world_state.compute_beat_delta(
-            effect_trends=self.effect_trends,
-            accumulated_delta=self.accumulated_delta,
-            player_input=player_input,
+    def handle_player_input(self, player_input: str):
+        if self.event_loop and self.event_loop.pending_beat_task and not self.event_loop.pending_beat_task.done():
+            self.event_loop.pending_beat_task.cancel()
+
+        self._player_turn_active = False
+
+        # ── 第一步：三层门控分析 ──
+        analysis = self.input_parser.analyze_full(
+            player_input,
+            current_landmark=self.landmark_manager.get_current(),
+            current_storylet=self.current_storylet,
+            conversation_history=self.state_manager.get_conversation_history()
         )
 
-        if not actual_delta:
+        # Gate1 阻断：非法输入
+        if not analysis.valid and analysis.severity == "hard":
+            self._emit_pipeline("gate1", "block", analysis.reason or "输入不可接受")
+            input_rejected(analysis.reason or "输入不可接受")
+            self._player_turn_active = True
             return
+        self._emit_pipeline("gate1", "pass", "输入合法")
 
-        for key, val in actual_delta.items():
-            current = self.world_state.get_quality(key, 0)
-            new_val = current + val
-            self.state_manager.set_quality(key, new_val)
-            self.accumulated_delta[key] = self.accumulated_delta.get(key, 0) + val
+        # ── 第二步：更新回合计数 ──
+        self.current_turn += 1
+        self.storylet_turn_count += 1
+        self.director.advance_turn()
 
-        self._display_state_change(actual_delta, hint)
+        # ── 第三步：追加对话历史（不触发叙事）──
+        if player_input and player_input.strip():
+            self.state_manager.append_conversation_history(f"玩家: {player_input}")
+            self.conversation_history.append(f"玩家: {player_input}")
 
-    def _apply_raw_delta(self, delta: Dict[str, Any], hint: str = ""):
-        if not delta:
-            return
-        actual = {}
-        for key, val in delta.items():
-            if isinstance(val, (int, float)):
-                current = self.world_state.get_quality(key, 0)
-                self.state_manager.set_quality(key, current + val)
-                self.accumulated_delta[key] = self.accumulated_delta.get(key, 0) + val
-                actual[key] = val
-        if actual:
-            self._display_state_change(actual, hint)
+        # 跟踪本轮是否触发了叙事切换
+        narrative_result = None
 
-    def _display_state_change(self, delta: Dict[str, int], hint: str = ""):
-        current_values = {k: self.world_state.get_quality(k, 0) for k in delta.keys()}
-        state_change(delta, current_values, hint)
+        # ── 第四步：Gate2 处理 ──
+        if analysis.gate2_opened and not analysis.is_in_narrative_goal:
+            self._emit_pipeline("gate2", "off_goal",
+                f"输入偏离叙事目标 | 命中条件: {analysis.matched_ids} | effects: {len(analysis.world_state_effects)}个")
+            if analysis.world_state_effects:
+                narrative_result = self.state_manager.apply_effects_batch(
+                    effects=analysis.world_state_effects,
+                    is_narrative_trigger=True,
+                    hint="玩家偏离目标输入触发的状态变化",
+                    turn=self.current_turn
+                )
+                self._emit_pipeline("worldstate", "changed",
+                    f"应用 {len(analysis.world_state_effects)} 个 effects → 叙事流转")
+        elif analysis.gate2_opened:
+            self._emit_pipeline("gate2", "on_goal", "输入在叙事目标内")
 
-    def _check_and_handle_transitions(self, player_input: str) -> bool:
-        next_landmark_id = self.landmark_manager.check_progression(
-            self.world_state, player_input
+        # ── 第五步：Gate3 处理 ──
+        if analysis.gate3_opened:
+            self._emit_pipeline("gate3", analysis.goal_assessment,
+                f"GoalTracker: {analysis.goal_assessment} | apply_effects={analysis.should_apply_goal_effects}")
+            if analysis.should_apply_goal_effects:
+                if self.current_storylet:
+                    result = self.storylet_manager.force_complete(
+                        self.current_storylet, self.state_manager,
+                        turn=self.current_turn
+                    )
+                    if result and not narrative_result:
+                        narrative_result = result
+                        self._emit_pipeline("narration", "storylet_switch" if result.type == NarrativeEventType.STORYLET_SWITCH else "landmark_switch",
+                            f"叙事切换: {result.type.value}")
+
+        # ── 第六步：闲聊兜底 → 检查超时 ──
+        if self.current_storylet:
+            if self.storylet_manager.check_timeout(
+                self.current_storylet, self.storylet_turn_count
+            ):
+                self._emit_pipeline("timeout", "triggered",
+                    f"max_turns={self.current_storylet.max_turns} 已到，强制完成")
+                result = self.storylet_manager.force_complete(
+                    self.current_storylet, self.state_manager,
+                    turn=self.current_turn
+                )
+                if result and not narrative_result:
+                    narrative_result = result
+                    self._emit_pipeline("narration", "storylet_switch" if result.type == NarrativeEventType.STORYLET_SWITCH else "landmark_switch",
+                        f"叙事切换: {result.type.value}")
+
+        # ── 第七步：推送 GameLog ──
+        self._emit_game_log()
+
+        # ── 第八步：按需刷新 BeatPlan ──
+        narrative_switched = (
+            narrative_result is not None
+            and narrative_result.type in (NarrativeEventType.LANDMARK_SWITCH, NarrativeEventType.STORYLET_SWITCH)
         )
+        if narrative_switched:
+            self._emit_pipeline("beatplan", "refresh",
+                f"叙事切换，重新生成 BeatPlan | type={narrative_result.type.value}")
+        elif self.beat_index >= len(self.current_beat_plan):
+            self._emit_pipeline("beatplan", "refresh", "BeatPlan 耗尽，重新生成")
+        else:
+            self._emit_pipeline("beatplan", "continue", f"继续当前 BeatPlan [{self.beat_index}/{len(self.current_beat_plan)}]")
 
-        if next_landmark_id:
-            old_landmark = self.landmark_manager.get_current()
-            self.landmark_manager.set_current(next_landmark_id, self.world_state)
-            new_landmark = self.landmark_manager.get_current()
-
-            if new_landmark and new_landmark.is_ending:
-                self._trigger_ending_landmark(new_landmark)
-                self.game_ended = True
-                return True
-
-            landmark_entered(new_landmark.title if new_landmark else next_landmark_id)
-            self.landmark_start_turn = self.current_turn
-            self.current_storylet = None
-            self.storylet_turn_count = 0
-
-            new_storylet = self.story_selector.select(self.world_state, self.current_turn, player_input)
-            if new_storylet:
-                self._switch_to_storylet(new_storylet, is_landmark_switch=True, old_storylet=None)
-
-            return True
-
-        if self._should_switch_storylet(player_input):
-            old_storylet = self.current_storylet
-            new_storylet = self.story_selector.select(self.world_state, self.current_turn, player_input)
-
-            if new_storylet and (not old_storylet or new_storylet.id != old_storylet.id):
-                self._switch_to_storylet(new_storylet, is_landmark_switch=False, old_storylet=old_storylet)
-                return True
-
-        return False
-
-    def _switch_to_storylet(self, new_storylet, is_landmark_switch: bool = False, old_storylet=None):
-        if old_storylet:
-            storylet_ended(old_storylet.title)
-            self.logger.record_storylet_switch(old_storylet.title, new_storylet.title)
-
-        self.current_storylet = new_storylet
-        self.storylet_turn_count = 0
-        self.storylet_start_turn = self.current_turn
-
-        if new_storylet.narrative_goal:
-            self.director.set_current_goal(new_storylet.narrative_goal)
-
-        self.landmark_manager.increment_storylet_count()
-
-        self.current_beat_plan = []
-        self.beat_index = 0
-
-        self.effect_trends = new_storylet.get_effect_trends()
-        self.accumulated_delta = {}
-
-        self._apply_storylet_effects()
-
-        storylet_entered(new_storylet.title, new_storylet.narrative_goal)
-
-        if self.debug_mode:
-            self._show_storylet_start(new_storylet)
-
-        self.schedule_async(self._refresh_beat_plan())
-
-        if old_storylet:
-            self.schedule_async(self._generate_transition_beats(old_storylet, new_storylet, is_landmark_switch))
-
-    def _trigger_initial_storylet(self):
-        storylet = self.story_selector.select(self.world_state, self.current_turn)
-
-        if storylet:
-            self.current_storylet = storylet
-            self.storylet_turn_count = 0
-            self.storylet_start_turn = self.current_turn
-
-            if storylet.narrative_goal:
-                self.director.set_current_goal(storylet.narrative_goal)
-
-            self.effect_trends = storylet.get_effect_trends()
-            self.accumulated_delta = {}
-
-            if self.debug_mode:
-                self._show_storylet_start(storylet)
-
+        if narrative_switched or self.beat_index >= len(self.current_beat_plan):
+            self.current_beat_plan = []
+            self.beat_index = 0
             self.schedule_async(self._refresh_beat_plan())
 
-    def _check_player_mediation(self, player_input: str):
-        if not self.world_state.get_flag("secrets_revealed"):
-            return
-        if self.world_state.get_flag("player_mediated"):
-            return
-        mediation_keywords = [
-            "劝", "调解", "别吵", "好好说", "冷静", "和好", "谅解", "原谅",
-            "理解", "沟通", "一起", "家人", "没事的", "没关系", "说开", "你们俩",
-            "爸妈", "帮你们", "出面", "再给他一次机会", "说清楚", "好好谈",
-        ]
-        if any(kw in player_input for kw in mediation_keywords):
-            self.state_manager.set_flag("player_mediated", True)
-            self.logger.debug("player_mediated → True", module="mediation")
+        self._player_turn_active = True
 
-    def _execute_storylet(self, player_input: str = "", beat_intent: str = "", speaker: str = "",
-                          addressee: str = ""):
+    def handle_player_silence(self):
+        """处理玩家沉默（v2.0 简化版）"""
+        if self.event_loop and self.event_loop.pending_beat_task and not self.event_loop.pending_beat_task.done():
+            self.event_loop.pending_beat_task.cancel()
+
+        self._player_turn_active = False
+
+        self.current_turn += 1
+        self.storylet_turn_count += 1
+        self.director.advance_turn()
+        
+        silence_line = "玩家: 保持沉默"
+        self.state_manager.append_conversation_history(silence_line)
+        self.conversation_history.append(silence_line)
+        player_silence()
+
+        # 检查超时兜底
+        if self.current_storylet:
+            if self.storylet_manager.check_timeout(
+                self.current_storylet, self.storylet_turn_count
+            ):
+                self.storylet_manager.force_complete(
+                    self.current_storylet, self.state_manager,
+                    turn=self.current_turn
+                )
+
+        self._emit_game_log()
+
+        if self.beat_index >= len(self.current_beat_plan):
+            self.current_beat_plan = []
+            self.beat_index = 0
+            self.schedule_async(self._refresh_beat_plan())
+
+        self._player_turn_active = True
+
+    def _emit_game_log(self):
+        """推送 GameLog 到前端右栏"""
+        if self.event_loop:
+            self.event_loop.emit("game_log", self.game_log_writer.to_dict_list())
+
+    # ── Beat 自动化 ──────────────────────────────────────────────────
+
+    def handle_auto_beat(self):
+        if not self.current_beat_plan or self.beat_index >= len(self.current_beat_plan):
+            if self.event_loop:
+                self.event_loop.notify_beat_done()
+            return
+
+        beat = self.current_beat_plan[self.beat_index]
+
+        try:
+            if beat.get("speaker") == "narrator":
+                narrator_text(beat.get("content", ""))
+                self.beat_index += 1
+                return
+
+            if beat.get("speaker") == "player_turn":
+                return
+
+            speaker = beat.get("speaker", "trip")
+            beat_intent = beat.get("intent", "")
+            addressee = beat.get("addressee", "")
+
+            char_count = self._execute_storylet(
+                beat_intent=beat_intent, speaker=speaker, addressee=addressee
+            )
+            self.last_beat_char_count = char_count or 0
+            self.beat_index += 1
+
+            if self.beat_index >= len(self.current_beat_plan):
+                self.schedule_async(self._refresh_beat_plan())
+
+        finally:
+            if self.event_loop:
+                self.event_loop.notify_beat_done()
+
+    def _execute_storylet(self, player_input: str = "", beat_intent: str = "",
+                          speaker: str = "", addressee: str = ""):
         if not self.current_storylet:
             return
-
         if not speaker or speaker not in ("trip", "grace"):
-            if self.debug_mode:
-                self.logger.warning(f"speaker='{speaker}' 不合法，跳过此 beat", module="storylet")
             return
 
-        content = self.current_storylet.content
-
         return self._generate_character_response(
-            speaker, player_input, content,
-            beat_intent=beat_intent,
-            addressee=addressee,
+            speaker, player_input, self.current_storylet.content,
+            beat_intent=beat_intent, addressee=addressee,
         )
 
-    def _generate_character_response(self, character: str, player_input: str, content: Dict,
-                                      beat_intent: str = "", addressee: str = ""):
+    def _generate_character_response(self, character: str, player_input: str,
+                                      content: Dict, beat_intent: str = "",
+                                      addressee: str = ""):
         effective_content = dict(content)
         if self.current_storylet and "narrative_goal" not in effective_content:
             effective_content["narrative_goal"] = getattr(self.current_storylet, "narrative_goal", "")
 
-        narrative_goal = effective_content.get('narrative_goal', '')
-        tone = effective_content.get('tone', 'neutral')
+        narrative_goal = effective_content.get("narrative_goal", "")
+        tone = effective_content.get("tone", "neutral")
         director_instruction = f"叙事目标：{narrative_goal}\n情绪基调：{tone}"
 
         if beat_intent:
             director_instruction += f"\n[Beat 意图] {beat_intent}"
             if not player_input:
-                addr_hint = ""
-                if addressee:
-                    addr_map = {"grace": "Grace（你的配偶）", "trip": "Trip（你的配偶）", "player": "玩家（你们的老友）", "all": "在场的所有人"}
-                    addr_hint = addr_map.get(addressee, addressee)
+                addr_map = {
+                    "grace": "Grace（你的配偶）", "trip": "Trip（你的配偶）",
+                    "player": "玩家（你们的老友）", "all": "在场的所有人"
+                }
+                addr_hint = addr_map.get(addressee, addressee)
                 if addr_hint:
                     director_instruction += f"\n（你在跟{addr_hint}说话。根据意图自然开口，不要等别人说话。）"
                 else:
@@ -441,40 +489,28 @@ class GameEngine:
         forbidden_topics = current_landmark.get_forbidden_reveals() if current_landmark else []
 
         agent = self.get_character_agent(character)
-        
-        # 调试：验证上下文同步完整性
-        if self.debug_mode:
-            self.logger.debug(
-                f"[上下文同步] {character} 接收对话历史: {len(self.conversation_history)} 条 | "
-                f"最近3条: {self.conversation_history[-3:] if len(self.conversation_history) >= 3 else self.conversation_history}",
-                module="context_sync"
-            )
-        
+
         result = agent.generate_response(
-            player_input,
-            effective_content,
-            self.world_state.to_dict(),
-            self.conversation_history,
+            player_input, effective_content, self.world_state.to_dict(),
+            self.state_manager.get_conversation_history(),
             director_instruction=director_instruction,
             forbidden_topics=forbidden_topics,
-            beat_intent=beat_intent,
-            addressee=addressee,
+            beat_intent=beat_intent, addressee=addressee,
         )
 
         thought = result.get("thought", "")
         dialogue = result.get("dialogue", "")
         actions = result.get("actions", "")
-
         dialogue = self._clean_response_prefix(dialogue, character)
 
         character_line(character, dialogue, actions, thought, self.debug_mode)
 
-        # 触发角色说话事件（用于 WebSocket 推送）
         if self.event_loop:
             self.event_loop.emit("character_speaking", character, dialogue, actions, thought)
 
         history_line = self._format_history_line(character, dialogue, actions)
         if history_line:
+            self.state_manager.append_conversation_history(history_line)
             self.conversation_history.append(history_line)
 
         return len(dialogue) + len(actions)
@@ -484,30 +520,17 @@ class GameEngine:
         if dialogue:
             parts.append(dialogue)
         if actions:
-            # 结构化 actions 转为可读格式
             action_text = self._parse_actions_to_text(actions)
             if action_text:
                 parts.append(action_text)
-        if parts:
-            return f"{character}: {' | '.join(parts)}"
-        return ""
+        return f"{character}: {' | '.join(parts)}" if parts else ""
 
     def _parse_actions_to_text(self, actions: str) -> str:
-        """将结构化动作序列转为可读文本"""
         import re
-        # 解析 [action_id][param] 格式
         pattern = r'\[([^\]]+)\]'
         parts = re.findall(pattern, actions)
-        
-        readable = []
-        for i, part in enumerate(parts):
-            if part and part.strip():
-                # 简单转换：将下划线替换为空格
-                readable.append(part.replace('_', ' '))
-        
-        if readable:
-            return f"*动作: {' → '.join(readable)}*"
-        return ""
+        readable = [p.replace("_", " ") for p in parts if p and p.strip()]
+        return f"*动作: {' → '.join(readable)}*" if readable else ""
 
     def _clean_response_prefix(self, response: str, character: str) -> str:
         all_prefixes = [
@@ -527,351 +550,134 @@ class GameEngine:
                 break
         return cleaned
 
-    def _apply_storylet_effects(self):
-        if not self.current_storylet:
+    # ── 工具方法 ──────────────────────────────────────────────────────
+
+    def _apply_beat_delta(self, player_input: str, beat: Dict = None):
+        if not self.effect_trends:
             return
-        for effect in self.current_storylet.effects:
-            op = effect.get("op")
-            if op == "=":
-                self.state_manager.apply_effect(effect)
-
-        for conditional_effect in self.current_storylet.conditional_effects:
-            if self._check_conditional_effect(conditional_effect):
-                for effect in conditional_effect.get("effects", []):
-                    if effect.get("op") == "=":
-                        self.state_manager.apply_effect(effect)
-
-    def _check_conditional_effect(self, conditional_effect: Dict) -> bool:
-        conditions = conditional_effect.get("conditions", [])
-        if not conditions:
-            return True
-        for condition in conditions:
-            cond_type = condition.get("type")
-            if cond_type == "flag_check":
-                key = condition.get("key")
-                op = condition.get("op")
-                value = condition.get("value")
-                current = self.world_state.get_flag(key)
-                if not self._compare_values(current, op, value):
-                    return False
-            elif cond_type == "quality_check":
-                key = condition.get("key")
-                op = condition.get("op")
-                value = condition.get("value")
-                current = self.world_state.get_quality(key)
-                if not self._compare_values(current, op, value):
-                    return False
-        return True
-
-    def _should_switch_storylet(self, player_input: str) -> bool:
-        if not self.current_storylet:
-            return True
-        storylet = self.current_storylet
-        if storylet.sticky:
-            return self._check_force_wrap_up()
-        completion = storylet.completion_trigger
-        if completion:
-            max_turns = completion.get("max_turns", 10)
-            if self.storylet_turn_count >= max_turns:
-                return True
-        if self.storylet_turn_count >= 5:
-            return True
-        return False
-
-    def _check_force_wrap_up(self) -> bool:
-        if not self.current_storylet:
-            return False
-        force_wrap = self.current_storylet.force_wrap_up
-        if not force_wrap:
-            return False
-        max_turns = force_wrap.get("max_turns", 15)
-        if self.storylet_turn_count >= max_turns:
-            return True
-        return False
-
-    def _show_status(self):
-        landmark = self.landmark_manager.get_current()
-        flags_to_show = [
-            'arrived', 'drinks_started', 'renovation_fight',
-            'trip_confessed', 'grace_exposed', 'secrets_revealed',
-            'trip_detail_revealed', 'grace_detail_revealed',
-            'honest_conversation', 'final_decision_made', 'player_mediated'
-        ]
-        flags = {flag: self.world_state.get_flag(flag) for flag in flags_to_show}
-        show_status(
-            current_turn=self.current_turn,
-            landmark_id=self.landmark_manager.current_landmark_id,
-            landmark_title=landmark.title if landmark else None,
-            landmark_desc=landmark.description if landmark else None,
-            storylet_title=self.current_storylet.title if self.current_storylet else None,
-            narrative_goal=self.current_storylet.narrative_goal if self.current_storylet else None,
-            beat_index=self.beat_index,
-            beat_plan_len=len(self.current_beat_plan),
-            storylet_turn_count=self.storylet_turn_count,
-            qualities=dict(self.world_state.qualities),
-            flags=flags
+        predicted_delta = beat.get("world_state_delta", {}) if beat else {}
+        hint = beat.get("state_change_hint", "") if beat else ""
+        actual_delta = self.world_state.compute_beat_delta(
+            effect_trends=self.effect_trends,
+            accumulated_delta=self.accumulated_delta,
+            player_input=player_input,
         )
-
-    def _show_storylet_start(self, storylet):
-        if not self.debug_mode:
+        if not actual_delta:
             return
-        self.logger.debug(f"Storylet 开始: {storylet.id}", module="storylet")
-        self.logger.debug(f"阶段标签: {storylet.phase_tags}", module="storylet")
-        self.logger.debug(f"Salience 基础分: {storylet.salience.get('base', 5)}", module="storylet")
+        for key, val in actual_delta.items():
+            current = self.world_state.get_quality(key, 0)
+            self.state_manager.set_quality(key, current + val)
+            self.accumulated_delta[key] = self.accumulated_delta.get(key, 0) + val
+        self._display_state_change(actual_delta, hint)
 
-    def _trigger_ending_landmark(self, landmark):
-        ending(
-            landmark_title=landmark.title,
-            description=landmark.description,
-            ending_content=landmark.ending_content,
-            total_turns=self.current_turn,
-            tension=self.world_state.get_quality('tension'),
-            trip_confessed=self.world_state.get_flag('trip_confessed'),
-            grace_exposed=self.world_state.get_flag('grace_exposed'),
-            player_mediated=self.world_state.get_flag('player_mediated')
-        )
-        self.logger.log_metrics()
-
-    def _compare_values(self, actual, op: str, expected) -> bool:
-        if op == "==":
-            return actual == expected
-        elif op == "!=":
-            return actual != expected
-        elif op == ">":
-            return actual > expected
-        elif op == ">=":
-            return actual >= expected
-        elif op == "<":
-            return actual < expected
-        elif op == "<=":
-            return actual <= expected
-        return False
-
-    def _pick_nudge_speaker(self) -> str:
-        if self.current_beat_plan and self.beat_index > 0:
-            prev = self.current_beat_plan[self.beat_index - 1]
-            prev_speaker = prev.get("speaker", "")
-            if prev_speaker in ("trip", "grace"):
-                return prev_speaker
-        for i in range(self.beat_index - 1, -1, -1):
-            sp = self.current_beat_plan[i].get("speaker", "")
-            if sp in ("trip", "grace"):
-                return sp
-        return "trip"
-
-    def handle_player_input(self, player_input: str):
-        if self.event_loop and self.event_loop.pending_beat_task and not self.event_loop.pending_beat_task.done():
-            self.event_loop.pending_beat_task.cancel()
-
-        self._player_turn_active = False
-
-        context = {
-            "situation": "家庭晚餐",
-            "landmark": self.landmark_manager.current_landmark_id
-        }
-        analysis = self.input_parser.validate_input(player_input, context)
-        self.logger.debug(f"输入分析: valid={analysis.get('valid')}, severity={analysis.get('severity')}", module="input")
-
-        if not analysis.get("valid") and analysis.get("severity") == "hard":
-            reason = analysis.get("reason", "")
-            input_rejected(reason)
-            self._player_turn_active = True
+    def _apply_raw_delta(self, delta: Dict[str, Any], hint: str = ""):
+        if not delta:
             return
+        for key, val in delta.items():
+            if isinstance(val, (int, float)):
+                current = self.world_state.get_quality(key, 0)
+                self.state_manager.set_quality(key, current + val)
+                self.accumulated_delta[key] = self.accumulated_delta.get(key, 0) + val
 
-        self.current_turn += 1
-        self.storylet_turn_count += 1
-        self.director.advance_turn()
-        self.landmark_manager.increment_turn_count()
+    def _display_state_change(self, delta: Dict[str, int], hint: str = ""):
+        current_values = {k: self.world_state.get_quality(k, 0) for k in delta}
+        state_change(delta, current_values, hint)
 
-        if player_input and player_input.strip():
-            self.conversation_history.append(f"玩家: {player_input}")
+    # ── 初始化 Storylet ──────────────────────────────────────────────
 
-        self._check_player_mediation(player_input)
-        self._apply_beat_delta(player_input)
-
-        self.current_beat_plan = []
-        self.beat_index = 0
-
-        storylet_changed = self._check_and_handle_transitions(player_input)
-        if not storylet_changed:
+    def _trigger_initial_storylet(self):
+        storylet = self.story_selector.select(self.world_state, self.current_turn)
+        if storylet:
+            self.current_storylet = storylet
+            self.storylet_turn_count = 0
+            self.storylet_start_turn = self.current_turn
+            if storylet.narrative_goal:
+                self.director.set_current_goal(storylet.narrative_goal)
+            self.effect_trends = storylet.get_effect_trends()
+            self.accumulated_delta = {}
+            storylet_entered(storylet.title, storylet.narrative_goal)
+            if self.event_loop:
+                self.event_loop.emit("storylet_entered", storylet.title, storylet.narrative_goal)
             self.schedule_async(self._refresh_beat_plan())
 
-    def handle_player_silence(self):
-        if self.event_loop and self.event_loop.pending_beat_task and not self.event_loop.pending_beat_task.done():
-            self.event_loop.pending_beat_task.cancel()
+    # ── 位置管理 ──────────────────────────────────────────────────────
 
-        self._player_turn_active = False
-
-        self.current_turn += 1
-        self.storylet_turn_count += 1
-        self.director.advance_turn()
-        self.landmark_manager.increment_turn_count()
-
-        self.conversation_history.append("玩家: 保持沉默")
-        player_silence()
-
-        self._apply_beat_delta("")
-
-        self.current_beat_plan = []
-        self.beat_index = 0
-
-        storylet_changed = self._check_and_handle_transitions("")
-        if not storylet_changed:
-            self.schedule_async(self._refresh_beat_plan())
-
-    def handle_auto_beat(self):
-        if not self.current_beat_plan or self.beat_index >= len(self.current_beat_plan):
-            if self.event_loop:
-                self.event_loop.notify_beat_done()
-            return
-
-        # 调试：打印完整 BeatPlan
-        if self.debug_mode and self.beat_index == 0:
-            print(f"\n[DEBUG] 完整 BeatPlan ({len(self.current_beat_plan)} beats):")
-            for i, b in enumerate(self.current_beat_plan):
-                print(f"  [{i}] {b['speaker']}: {b.get('intent', '')[:50]}...")
-            print()
-
-        beat = self.current_beat_plan[self.beat_index]
-
-        try:
-            if beat.get("speaker") == "narrator":
-                content = beat.get("content", "")
-                narrator_text(content)
-                self.beat_index += 1
-                return
-
-            if beat.get("speaker") == "player_turn":
-                return
-
-            speaker = beat.get("speaker", "trip")
-            beat_intent = beat.get("intent", "")
-            addressee = beat.get("addressee", "")
-
-            char_count = self._execute_storylet(beat_intent=beat_intent, speaker=speaker, addressee=addressee)
-            self.last_beat_char_count = char_count or 0
-
-            self.beat_index += 1
-            self._apply_beat_delta("", beat)
-
-            storylet_changed = self._check_and_handle_transitions("")
-            if storylet_changed:
-                return
-
-            if self.beat_index >= len(self.current_beat_plan):
-                self.schedule_async(self._refresh_beat_plan())
-
-        finally:
-            if self.event_loop:
-                self.event_loop.notify_beat_done()
-
-    # ─── 位置管理 ──────────────────────────────────────────────────────────────
-
-    def handle_move_location(self, location_id: str) -> tuple[bool, str, Dict]:
-        """
-        处理玩家移动到指定位置
-        返回: (success, message, location_summary)
-        
-        副作用：
-        - 记录移动到 conversation_history（等同于沉默交互）
-        - 打断当前 BeatPlan 循环
-        - 触发重新生成 BeatPlan
-        """
+    def handle_move_location(self, location_id: str):
         if not self.location_manager:
             return False, "位置管理器未初始化", {}
 
         old_loc = self.location_manager.get_player_location()
         old_loc_obj = self.location_manager.get_location(old_loc) if old_loc else None
         new_loc_obj = self.location_manager.get_location(location_id)
-        
+
         success, message = self.location_manager.move_player(location_id)
-        
+
         if success and old_loc_obj and new_loc_obj:
-            # 1. 记录到对话历史（等同于沉默交互）
             move_record = f"玩家: （移动）从 {old_loc_obj.label} 移动到了 {new_loc_obj.label}"
+            self.state_manager.append_conversation_history(move_record)
             self.conversation_history.append(move_record)
-            
-            # 2. 推进回合计数（与 handle_player_silence 类似）
             self.current_turn += 1
             self.storylet_turn_count += 1
             self.director.advance_turn()
-            self.landmark_manager.increment_turn_count()
             
-            # 3. 打断当前 BeatPlan（取消 pending_beat_task）
-            if self.event_loop and self.event_loop.pending_beat_task:
-                if not self.event_loop.pending_beat_task.done():
-                    self.event_loop.pending_beat_task.cancel()
-            
-            # 4. 清空当前 BeatPlan，触发重新生成
-            self.current_beat_plan = []
-            self.beat_index = 0
-            
-            # 5. 检查是否需要切换 Storylet（基于位置触发）
-            storylet_changed = self._check_and_handle_transitions_by_location()
-            
-            # 6. 如果没有 Storylet 切换，刷新 BeatPlan
-            if not storylet_changed:
-                self.schedule_async(self._refresh_beat_plan())
-        
+            if self.current_storylet:
+                if self.storylet_manager.check_timeout(
+                    self.current_storylet, self.storylet_turn_count
+                ):
+                    self.storylet_manager.force_complete(
+                        self.current_storylet, self.state_manager,
+                        turn=self.current_turn
+                    )
+
+            self._emit_game_log()
+
         location_summary = self.location_manager.get_location_summary()
         return success, message, location_summary
 
-    def _check_and_handle_transitions_by_location(self) -> bool:
-        """基于玩家位置变化检查是否需要切换 Storylet"""
-        if not self.current_storylet:
-            return False
-        
-        # 检查当前 Storylet 是否有位置约束
-        if self.current_storylet.location_requirements:
-            player_loc = self.location_manager.get_player_location()
-            reqs = self.current_storylet.location_requirements
-            
-            if "any_of" in reqs:
-                if player_loc not in reqs["any_of"]:
-                    # 玩家不在允许的位置，尝试切换
-                    new_storylet = self.story_selector.select(
-                        self.world_state, self.current_turn, 
-                        player_input=""  # 移动触发，无输入
-                    )
-                    if new_storylet and new_storylet.id != self.current_storylet.id:
-                        self._switch_to_storylet(new_storylet)
-                        return True
-            elif "all_of" in reqs:
-                # 需要所有指定位置都有角色在场（简化处理：检查玩家是否在其中）
-                required_locs = reqs["all_of"]
-                if player_loc not in required_locs:
-                    new_storylet = self.story_selector.select(
-                        self.world_state, self.current_turn, 
-                        player_input=""
-                    )
-                    if new_storylet and new_storylet.id != self.current_storylet.id:
-                        self._switch_to_storylet(new_storylet)
-                        return True
-        
-        return False
-
-    def get_location_info(self) -> Dict:
-        """获取位置信息（用于前端初始化）"""
+    def get_location_info(self) -> Dict[str, Any]:
         if not self.location_manager:
-            return {}
+            return {"locations": [], "player_location": "", "entity_locations": {}}
         return self.location_manager.get_location_summary()
 
-    def get_entities_at_current_location(self) -> Dict[str, List[str]]:
-        """获取当前玩家位置的所有可见实体"""
-        if not self.location_manager:
-            return {"characters": [], "props": []}
-        player_loc = self.location_manager.get_player_location()
-        if not player_loc:
-            return {"characters": [], "props": []}
-        return self.location_manager.get_entities_at_location(player_loc)
+    # ── 废弃方法（v1.0 兼容存根）─────────────────────────────────────
 
-    def can_interact_with(self, entity_id: str) -> bool:
-        """检查玩家是否可以与指定实体交互（是否在同一位置）"""
-        if not self.location_manager:
-            return True  # 如果没有位置管理器，允许交互
-        player_loc = self.location_manager.get_player_location()
-        entity_loc = self.location_manager.get_entity_location(entity_id)
-        # 如果实体没有固定位置（未在entity_locations中），假设可以被交互
-        if entity_loc is None:
-            return True
-        return player_loc == entity_loc
+    def _check_and_handle_transitions(self, player_input: str) -> bool:
+        """已废弃，v2.0 由 NarrativeOrchestrator 接管"""
+        return False
+
+    def _should_switch_storylet(self, player_input: str) -> bool:
+        """已废弃，v2.0 由 StoryletManager.check_timeout 接管"""
+        return False
+
+    def _switch_to_storylet(self, new_storylet, is_landmark_switch=False, old_storylet=None):
+        """已废弃，v2.0 由 NarrativeOrchestrator._handle_storylet_switch 接管"""
+        pass
+
+    def _apply_storylet_effects(self):
+        """已废弃，v2.0 由 StoryletManager.force_complete 接管"""
+        pass
+
+    def _check_player_mediation(self, player_input: str):
+        """保留兼容"""
+        pass
+
+    def _show_status(self):
+        pass
+
+    def _show_storylet_start(self, storylet):
+        pass
+
+    def _trigger_ending_landmark(self, landmark):
+        pass
+
+    def _compare_values(self, actual, op: str, expected) -> bool:
+        if op == "==": return actual == expected
+        if op == "!=": return actual != expected
+        if op == ">": return actual > expected
+        if op == ">=": return actual >= expected
+        if op == "<": return actual < expected
+        if op == "<=": return actual <= expected
+        return False
+
+    def _pick_nudge_speaker(self) -> str:
+        return "trip"

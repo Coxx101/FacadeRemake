@@ -21,7 +21,6 @@ class DIContainer:
 
         self._llm_client = None
         self._world_state = None
-        self._condition_store = None
         self._input_parser = None
         self._story_selector = None
         self._director = None
@@ -48,19 +47,11 @@ class DIContainer:
         return self._world_state
 
     @property
-    def condition_store(self):
-        if self._condition_store is None:
-            from agents.input_parser import SemanticConditionStore
-            self._condition_store = SemanticConditionStore()
-        return self._condition_store
-
-    @property
     def input_parser(self):
         if self._input_parser is None:
             from agents.input_parser import InputParser as CoreInputParser
             self._input_parser = CoreInputParser(
                 llm_client=self.llm_client,
-                condition_store=self.condition_store,
                 scenario_config=self._scenario_config
             )
         return self._input_parser
@@ -76,7 +67,7 @@ class DIContainer:
     def landmark_manager(self):
         if self._landmark_manager is None:
             from core.landmark import LandmarkManager
-            self._landmark_manager = LandmarkManager(llm_client=self.llm_client)
+            self._landmark_manager = LandmarkManager()
         return self._landmark_manager
 
     @property

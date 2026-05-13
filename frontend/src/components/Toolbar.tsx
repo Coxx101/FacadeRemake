@@ -37,10 +37,7 @@ export default function Toolbar() {
       phase_tag: id,
       is_ending: false,
       ending_content: '',
-      transitions: [],
-      max_storylets: 5,
-      narrative_constraints: { allowed_storylet_tags: [id], forbidden_reveals: [] },
-      world_state_effects_on_enter: [],
+      transitions: [], narrative_constraints: { forbidden_reveals: [] },
       fallback_storylet: undefined,
       position: { x: 120 + nonEnding.length * 280, y: 220 },
     }

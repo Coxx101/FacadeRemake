@@ -197,7 +197,6 @@ DINNER_PARTY_SCENARIO = ScenarioConfig(
             "title": "逼问 Trip",
             "phase_tags": ["act2"],
             "narrative_goal": "玩家追问 Trip，Trip 终于承认了自己的婚外情和对 Grace 艺术追求的压抑。",
-            "llm_trigger": "玩家追问 Trip、问 Trip 你到底怎么想的、对 Trip 说你有什么没说的",
             "conditions": [
                 {"type": "flag_check", "key": "renovation_fight", "op": "==", "value": True},
                 {"type": "flag_check", "key": "trip_confessed", "op": "==", "value": False},
@@ -220,7 +219,6 @@ DINNER_PARTY_SCENARIO = ScenarioConfig(
             "title": "私下问 Grace",
             "phase_tags": ["act2"],
             "narrative_goal": "玩家私下问 Grace，Grace 揭露了她与 Vince 的往事以及被婚姻扼杀的痛苦。",
-            "llm_trigger": "玩家私下问 Grace、问 Grace 你怎么了、对 Grace 说你能跟我说吗",
             "conditions": [
                 {"type": "flag_check", "key": "renovation_fight", "op": "==", "value": True},
                 {"type": "flag_check", "key": "grace_exposed", "op": "==", "value": False},
@@ -347,9 +345,7 @@ DINNER_PARTY_SCENARIO = ScenarioConfig(
             "title": "做客",
             "description": "玩家受邀来到 Trip 和 Grace 的公寓做客，表面寒暄，气氛尚可",
             "phase_tag": "act1",
-            "max_storylets": 4,
             "narrative_constraints": {
-                "allowed_storylet_tags": ["act1"],
                 "forbidden_reveals": ["affair", "vince", "divorce"]
             },
             "transitions": [
@@ -362,24 +358,16 @@ DINNER_PARTY_SCENARIO = ScenarioConfig(
                 },
                 {
                     "target_id": "lm_2_cracks",
-                    "label": "回合兜底",
-                    "turn_limit": 8,
-                    "is_fallback": True
-                }
+                    "label": "回合兜底"}
             ],
-            "fallback_storylet": "sl_generic",
-            "world_state_effects_on_enter": [
-                {"key": "current_landmark", "op": "=", "value": "lm_1_arrive"}
-            ]
+            "fallback_storylet": "sl_generic"
         },
         {
             "id": "lm_2_cracks",
             "title": "裂缝",
             "description": "表面寒暄逐渐失控，Trip 和 Grace 开始互相指责",
             "phase_tag": "act2",
-            "max_storylets": 4,
             "narrative_constraints": {
-                "allowed_storylet_tags": ["act2"],
                 "forbidden_reveals": []
             },
             "transitions": [
@@ -399,24 +387,16 @@ DINNER_PARTY_SCENARIO = ScenarioConfig(
                 },
                 {
                     "target_id": "lm_3b_grace",
-                    "label": "回合兜底",
-                    "turn_limit": 12,
-                    "is_fallback": True
-                }
+                    "label": "回合兜底"}
             ],
-            "fallback_storylet": "sl_generic",
-            "world_state_effects_on_enter": [
-                {"key": "current_landmark", "op": "=", "value": "lm_2_cracks"}
-            ]
+            "fallback_storylet": "sl_generic"
         },
         {
             "id": "lm_3a_trip",
             "title": "Trip 的坦白",
             "description": "Trip 承认了自己的婚外情，以及他无法接受 Grace 作为艺术家",
             "phase_tag": "act3",
-            "max_storylets": 2,
             "narrative_constraints": {
-                "allowed_storylet_tags": ["act3", "trip_path"],
                 "forbidden_reveals": []
             },
             "transitions": [
@@ -429,25 +409,16 @@ DINNER_PARTY_SCENARIO = ScenarioConfig(
                 },
                 {
                     "target_id": "lm_4_resolve",
-                    "label": "回合兜底",
-                    "turn_limit": 10,
-                    "is_fallback": True
-                }
+                    "label": "回合兜底"}
             ],
-            "fallback_storylet": "sl_generic",
-            "world_state_effects_on_enter": [
-                {"key": "current_landmark", "op": "=", "value": "lm_3a_trip"},
-                {"key": "secrets_revealed", "op": "=", "value": True}
-            ]
+            "fallback_storylet": "sl_generic"
         },
         {
             "id": "lm_3b_grace",
             "title": "Grace 的揭露",
             "description": "Grace 说出了与 Vince 的事，以及被婚姻扼杀了艺术才华的痛苦",
             "phase_tag": "act3",
-            "max_storylets": 2,
             "narrative_constraints": {
-                "allowed_storylet_tags": ["act3", "grace_path"],
                 "forbidden_reveals": []
             },
             "transitions": [
@@ -460,25 +431,16 @@ DINNER_PARTY_SCENARIO = ScenarioConfig(
                 },
                 {
                     "target_id": "lm_4_resolve",
-                    "label": "回合兜底",
-                    "turn_limit": 10,
-                    "is_fallback": True
-                }
+                    "label": "回合兜底"}
             ],
-            "fallback_storylet": "sl_generic",
-            "world_state_effects_on_enter": [
-                {"key": "current_landmark", "op": "=", "value": "lm_3b_grace"},
-                {"key": "secrets_revealed", "op": "=", "value": True}
-            ]
+            "fallback_storylet": "sl_generic"
         },
         {
             "id": "lm_4_resolve",
             "title": "摊牌",
             "description": "秘密已经摊开，三个人必须面对这段关系的真实状况",
             "phase_tag": "act4",
-            "max_storylets": 2,
             "narrative_constraints": {
-                "allowed_storylet_tags": ["act4"],
                 "forbidden_reveals": []
             },
             "transitions": [
@@ -491,15 +453,9 @@ DINNER_PARTY_SCENARIO = ScenarioConfig(
                 },
                 {
                     "target_id": "lm_5b_breakup",
-                    "label": "兜底：未达成和解",
-                    "storylet_count": 3,
-                    "is_fallback": True
-                }
+                    "label": "兜底：未达成和解"}
             ],
-            "fallback_storylet": "sl_generic",
-            "world_state_effects_on_enter": [
-                {"key": "current_landmark", "op": "=", "value": "lm_4_resolve"}
-            ]
+            "fallback_storylet": "sl_generic"
         },
         {
             "id": "lm_5a_reconcile",
@@ -507,7 +463,7 @@ DINNER_PARTY_SCENARIO = ScenarioConfig(
             "description": "Trip 和 Grace 同意不再逃避，愿意尝试面对彼此的真实想法。",
             "phase_tag": "ending",
             "is_ending": True,
-            "narrative_constraints": {"allowed_storylet_tags": []},
+            "narrative_constraints": {},
             "transitions": [],
             "ending_content": """Trip 坐在沙发扶手上，双手交叉放在膝盖上。
 Grace 站在窗边，手指无意识地摩挲着窗台的边缘。
@@ -520,7 +476,7 @@ Trip 点了点头，没有说话。"""
             "description": "这个晚上没有解决任何问题。婚姻继续维持着表面的体面。",
             "phase_tag": "ending",
             "is_ending": True,
-            "narrative_constraints": {"allowed_storylet_tags": []},
+            "narrative_constraints": {},
             "transitions": [],
             "ending_content": """Grace 把酒杯放在吧台上，发出一声清脆的响。
 "我觉得你该走了。"她对你说。

@@ -31,7 +31,7 @@ export default function TransitionsTab({
 
   const addTransition = () => save([
     ...transitions,
-    { target_id: '', conditions: [], is_fallback: false, label: '' },
+    { target_id: '', conditions: [], label: '' },
   ])
 
   const updateTransition = (i: number, patch: Partial<LandmarkTransition>) => {
@@ -40,12 +40,7 @@ export default function TransitionsTab({
 
   const removeTransition = (i: number) => save(transitions.filter((_, idx) => idx !== i))
 
-  const getEdgeType = (t: LandmarkTransition) => {
-    if (t.is_fallback) return 'fallback'
-    if (t.storylet_count != null) return 'count'
-    if (t.turn_limit != null) return 'turnlimit'
-    return 'condition'
-  }
+  const getEdgeType = (_t: LandmarkTransition) => 'condition'
 
   const otherLandmarks = landmarks.filter((l) => l.id !== landmark.id)
 
@@ -98,46 +93,11 @@ export default function TransitionsTab({
               </select>
             </div>
 
-            {/* 限制条件行 */}
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ color: '#444', fontSize: '11px', marginBottom: '3px' }}>Turn Limit</div>
-                <input
-                  type="number" min={1}
-                  value={t.turn_limit ?? ''}
-                  onChange={(e) => updateTransition(i, { turn_limit: e.target.value ? Number(e.target.value) : undefined })}
-                  style={{ ...inputStyle, fontSize: '11px' }}
-                  placeholder="无"
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ color: '#444', fontSize: '11px', marginBottom: '3px' }}>Storylet Count</div>
-                <input
-                  type="number" min={1}
-                  value={t.storylet_count ?? ''}
-                  onChange={(e) => updateTransition(i, { storylet_count: e.target.value ? Number(e.target.value) : undefined })}
-                  style={{ ...inputStyle, fontSize: '11px' }}
-                  placeholder="无"
-                />
-              </div>
-            </div>
-
-            {/* 兜底开关 */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '8px' }}>
-              <input
-                type="checkbox"
-                checked={t.is_fallback}
-                onChange={(e) => updateTransition(i, { is_fallback: e.target.checked })}
-                style={{ width: '14px', height: '14px', accentColor: '#FF0000' }}
-              />
-              <span style={{ color: '#444', fontSize: '11px' }}>兜底分支（is_fallback）</span>
-            </label>
-
-            {/* Conditions 列表 */}
             <ConditionListEditor
               conditions={t.conditions}
-              onChange={(conditions) => updateTransition(i, { conditions })}
+              onChange={(conds) => updateTransition(i, { conditions: conds })}
             />
+
           </div>
         )
       })}

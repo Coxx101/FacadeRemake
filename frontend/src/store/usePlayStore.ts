@@ -86,6 +86,7 @@ interface WsPlayerTurn {
 export interface LlmDebugEntry {
   id: string
   event: 'llm_request' | 'llm_response'
+  component?: string  // v2.0: 组件标签，如 "InputParser/Gate1"
   model?: string
   temperature?: number
   max_tokens?: number | null
@@ -98,6 +99,7 @@ interface WsLlmDebug {
   type: 'llm_debug'
   event: 'llm_request' | 'llm_response'
   data: {
+    component?: string
     model?: string
     temperature?: number
     max_tokens?: number | null
@@ -105,6 +107,23 @@ interface WsLlmDebug {
     content?: string
   }
   ts: number
+}
+
+// ── v2.0: 流水线调试事件 ──────────────────────────────────────────────
+export interface PipelineEvent {
+  turn: number
+  step: string
+  result: string
+  detail: string
+  ts?: number
+}
+
+interface WsPipelineEvent {
+  type: 'pipeline_event'
+  turn: number
+  step: string
+  result: string
+  detail: string
 }
 
 interface WsReadyMessage {
@@ -142,7 +161,22 @@ interface WsBeatPlanRefresh {
   message?: string
 }
 
-type WsIncomingMessage = WsChatMessage | WsStateUpdate | WsErrorMessage | WsLlmDebug | WsPlayerTurn | WsReadyMessage | WsLocationUpdate | WsLocationInfo | WsBeatPlanRefresh
+// ── v2.0: GameLog ──────────────────────────────────────────────────────────
+interface GameLogEntry {
+  title: string
+  completion_status: string
+  summary: string
+  turn: number
+  storylet_id: string
+  timestamp: string
+}
+
+interface WsGameLog {
+  type: 'game_log'
+  entries: GameLogEntry[]
+}
+
+type WsIncomingMessage = WsChatMessage | WsStateUpdate | WsErrorMessage | WsLlmDebug | WsPlayerTurn | WsReadyMessage | WsLocationUpdate | WsLocationInfo | WsBeatPlanRefresh | WsGameLog | WsPipelineEvent
 
 // ── Store 类型 ────────────────────────────────────────────────────────────────
 export interface PlayState {
@@ -164,7 +198,14 @@ export interface PlayState {
   setSentInitScene: (v: boolean) => void
   debugLogs: LlmDebugEntry[]
   clearDebugLogs: () => void
+
+  // ── v2.0: 流水线调试 ──
+  pipelineEvents: PipelineEvent[]
+  clearPipelineEvents: () => void
   isPlayerTurn: boolean // 是否轮到玩家输入
+
+  // ── v2.0: GameLog ──
+  gameLogEntries: GameLogEntry[]
 
   // ── 位置系统 ──
   locations: Array<{ id: string; label: string; adjacent: string[] }>
@@ -451,6 +492,8 @@ export const usePlayStore = create<PlayState>()(
     _snapshotStack: [],
     debugLogs: [],
     isPlayerTurn: false,
+    gameLogEntries: [],
+    pipelineEvents: [],
 
     // 位置系统初始状态
     locations: [],
@@ -461,6 +504,7 @@ export const usePlayStore = create<PlayState>()(
 
     setDebugOpen: (open) => set((s) => { s.debugOpen = open }),
     clearDebugLogs: () => set((s) => { s.debugLogs = [] }),
+    clearPipelineEvents: () => set((s) => { s.pipelineEvents = [] }),
     setSentInitScene: (v) => set((s) => { s.sentInitScene = v }),
 
     initFromWSD: (_wsd, _firstLandmarkId) => {
@@ -571,6 +615,7 @@ export const usePlayStore = create<PlayState>()(
           s.debugLogs.push({
             id: `dbg_${Date.now()}_${s.debugLogs.length}`,
             event: ld.event,
+            component: ld.data.component || '',
             model: ld.data.model,
             temperature: ld.data.temperature,
             max_tokens: ld.data.max_tokens,
@@ -578,9 +623,6 @@ export const usePlayStore = create<PlayState>()(
             content: ld.data.content,
             ts: ld.ts,
           })
-          if (s.debugLogs.length > 200) {
-            s.debugLogs = s.debugLogs.slice(-200)
-          }
         })
       } else if (data.type === 'ready') {
         console.log('[WS] ✅ Backend ready signal received')
@@ -612,6 +654,16 @@ export const usePlayStore = create<PlayState>()(
           if ((data as any).props) {
             s.props = (data as any).props
           }
+        })
+      } else if (data.type === 'pipeline_event') {
+        const pe = data as WsPipelineEvent
+        set((s) => {
+          s.pipelineEvents.push({ ...pe, ts: Date.now() })
+        })
+      } else if (data.type === 'game_log') {
+        console.log('[WS] 📋 GameLog received:', (data as WsGameLog).entries?.length, 'entries')
+        set((s) => {
+          s.gameLogEntries = (data as WsGameLog).entries || []
         })
       } else if (data.type === 'beat_plan_refresh') {
         console.log('[WS] 🔄 Beat plan refresh triggered:', (data as WsBeatPlanRefresh).reason)
@@ -685,6 +737,9 @@ export const usePlayStore = create<PlayState>()(
         s._snapshotStack = []
         s.isLoading = false
         s.gameEnded = false
+        s.gameLogEntries = []
+        s.debugLogs = []
+        s.pipelineEvents = []
         s.backendReady = false // 重置 backendReady
         s.sentInitScene = false // 重置 sentInitScene
       })

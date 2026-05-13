@@ -1,5 +1,10 @@
 """
 状态管理器模块 - 封装状态操作，提供事务性更新能力
+
+v2.0 变更：
+  - 新增 apply_effects_batch(): 批量应用 effects + 自动触发叙事检测
+  - 新增 bind_narrative_orchestrator(): 绑定叙事编排器
+  - 新增对话历史管理：append_conversation_history / get_conversation_history
 """
 from typing import Dict, Any, Optional, List, Callable
 from contextlib import contextmanager
@@ -40,12 +45,78 @@ class StateManager:
         self._transaction_stack: List[StateTransaction] = []
         self._history = []
 
+        # ── v2.0 新增 ──
+        self._narrative_orchestrator: Optional[Any] = None
+        self._conversation_history: List[str] = []
+
+    # ── 叙事编排器绑定 ──────────────────────────────────────────
+
+    def bind_narrative_orchestrator(self, orchestrator: 'Any'):
+        """绑定 NarrativeOrchestrator，WorldState 变化时触发回调"""
+        self._narrative_orchestrator = orchestrator
+
+    def unbind_narrative_orchestrator(self):
+        self._narrative_orchestrator = None
+
+    # ── 批量应用效果（核心变更）────────────────────────────────
+
+    def apply_effects_batch(self,
+                            effects: List[Dict[str, Any]],
+                            is_narrative_trigger: bool = True,
+                            hint: str = "",
+                            turn: int = 0):
+        """
+        批量应用 effects 到 WorldState。
+
+        Args:
+            effects: 效果列表
+            is_narrative_trigger: True=触发 NarrativeOrchestrator 检测；
+                                 False=静默修改（对话历史写入等场景使用）
+            hint: 变更说明
+            turn: 当前回合号（由 GameEngine 传入）
+
+        Returns:
+            NarrativeResult 或 None（无变化或未触发时）
+        """
+        if not effects:
+            return None
+
+        # 1. 收集所有变更的 key
+        delta_keys = set()
+        for effect in effects:
+            key = effect.get("key")
+            if key:
+                delta_keys.add(key)
+
+        # 2. 应用所有 effects
+        for effect in effects:
+            self.apply_effect(effect, hint)
+
+        # 3. 仅在 is_narrative_trigger=True 时触发叙事检测，返回结果
+        if is_narrative_trigger and self._narrative_orchestrator and delta_keys:
+            return self._narrative_orchestrator.on_world_state_changed(
+                delta_keys=delta_keys,
+                world_state=self.world_state,
+                turn=turn
+            )
+        return None
+
+    # ── 对话历史管理 ────────────────────────────────────────────
+
+    def append_conversation_history(self, line: str):
+        """追加对话历史。不对 WorldState 进行任何修改，不触发叙事检测。"""
+        self._conversation_history.append(line)
+
+    def get_conversation_history(self) -> List[str]:
+        return self._conversation_history.copy()
+
+    # ── 事务 ────────────────────────────────────────────────────
+
     @contextmanager
     def transaction(self):
         transaction = StateTransaction(self)
         transaction.begin()
         self._transaction_stack.append(transaction)
-
         try:
             yield transaction
             transaction.commit()
@@ -54,6 +125,8 @@ class StateManager:
             raise e
         finally:
             self._transaction_stack.pop()
+
+    # ── 监听器 ──────────────────────────────────────────────────
 
     def add_change_listener(self, listener: Callable[[Dict[str, Any], str], None]):
         self._change_listeners.append(listener)
@@ -75,6 +148,8 @@ class StateManager:
                 "turn": len(self._history),
                 "changes": delta_log
             })
+
+    # ── WorldState 操作 ─────────────────────────────────────────
 
     def get_quality(self, key: str, default: float = 0.0) -> float:
         return self.world_state.get_quality(key, default)
@@ -141,6 +216,7 @@ class StateManager:
     def reset(self):
         self.world_state = WorldState()
         self._history = []
+        self._conversation_history = []
 
 
 _global_state_manager = None

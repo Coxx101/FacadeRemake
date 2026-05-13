@@ -112,8 +112,8 @@ export default function StoryletModal() {
             ))}
           </div>
 
-          {/* 右侧内容区 */}
-          <div style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+          {/* 右侧内容区 — 固定最小高度防跳变 */}
+          <div style={{ flex: 1, overflow: 'auto', padding: '20px', minHeight: '380px' }}>
             {tab === 'basic'      && <BasicTab form={form} set={set} />}
             {tab === 'conditions' && <ConditionsTab form={form} set={set} />}
             {tab === 'effects'    && <EffectsTab form={form} set={set} />}
@@ -123,26 +123,36 @@ export default function StoryletModal() {
           </div>
         </div>
 
-        {/* 底部按钮 */}
+        {/* 底部按钮 — 90s bevel 风格 */}
         <div style={{
-          padding: '14px 20px', borderTop: '1px solid #2e3250',
-          display: 'flex', justifyContent: 'flex-end', gap: '10px',
-          background: '#1e2130',
+          padding: '10px 20px', borderTop: '2px solid #808080',
+          display: 'flex', justifyContent: 'flex-end', gap: '8px',
+          background: '#C0C0C0',
         }}>
-          <button onClick={closeModal} style={{
-            padding: '8px 20px', background: 'none',
-            border: '1px solid #2e3250', borderRadius: '8px',
-            color: '#8891b0', fontSize: '13px', cursor: 'pointer',
-          }}>
+          <button onClick={closeModal}
+            className="bevel-out"
+            style={{
+              padding: '5px 18px',
+              background: '#C0C0C0',
+              border: '2px solid',
+              borderColor: '#ffffff #808080 #808080 #ffffff',
+              color: '#000',
+              fontSize: '12px', fontWeight: 400, cursor: 'pointer',
+              fontFamily: '"MS Sans Serif", sans-serif',
+            }}>
             取消
           </button>
-          <button onClick={handleSave} style={{
-            padding: '8px 24px',
-            background: 'linear-gradient(135deg, #4f6ef7 0%, #3a56d4 100%)',
-            border: 'none', borderRadius: '8px',
-            color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-            boxShadow: '0 2px 10px rgba(79,110,247,0.4)',
-          }}>
+          <button onClick={handleSave}
+            className="bevel-out"
+            style={{
+              padding: '5px 22px',
+              background: '#C0C0C0',
+              border: '2px solid',
+              borderColor: '#ffffff #808080 #808080 #ffffff',
+              color: '#0000FF',
+              fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+              fontFamily: '"MS Sans Serif", sans-serif',
+            }}>
             保存
           </button>
         </div>
@@ -160,7 +170,7 @@ function BasicTab({ form, set }: { form: Storylet; set: SetFn }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       <Row>
         <Field label="ID">
-          <input value={form.id} readOnly style={{ ...inputStyle, background: '#0f1117', cursor: 'not-allowed' }} />
+          <input value={form.id} readOnly style={{ ...inputStyle, background: '#d0d0d0', cursor: 'not-allowed' }} />
         </Field>
       </Row>
       <Row>
@@ -187,17 +197,6 @@ function BasicTab({ form, set }: { form: Storylet; set: SetFn }) {
           />
         </Field>
       </Row>
-      <Row>
-        <Field label="LLM Trigger（自然语言触发条件）">
-          <textarea
-            value={form.llm_trigger ?? ''}
-            onChange={(e) => set('llm_trigger', e.target.value || undefined)}
-            rows={2}
-            style={{ ...inputStyle, resize: 'vertical' }}
-            placeholder="如：玩家提到了手机、催收、借钱相关话题"
-          />
-        </Field>
-      </Row>
     </div>
   )
 }
@@ -219,9 +218,9 @@ function ConditionsTab({ form, set }: { form: Storylet; set: SetFn }) {
       )}
 
       {form.conditions.map((c, i) => (
-        <div key={i} style={{
-          background: '#131828', border: '1px solid #2e3250',
-          borderRadius: '8px', padding: '10px',
+        <div key={i} className="bevel-in" style={{
+          background: '#ffffff',
+          padding: '8px',
         }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <select
@@ -262,8 +261,8 @@ function ConditionsTab({ form, set }: { form: Storylet; set: SetFn }) {
 
       <button onClick={addCond} style={addBtnStyle}>+ 添加条件</button>
 
-      <div style={{ marginTop: '8px', paddingTop: '12px', borderTop: '1px solid #2e3250' }}>
-        <div style={{ color: '#8891b0', fontSize: '11px', marginBottom: '4px', fontWeight: 500 }}>
+      <div style={{ marginTop: '8px', paddingTop: '12px', borderTop: '2px solid #808080' }}>
+        <div style={{ color: '#444', fontSize: '11px', marginBottom: '4px', fontWeight: 600 }}>
           重复性 (repeatability)
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -278,7 +277,7 @@ function ConditionsTab({ form, set }: { form: Storylet; set: SetFn }) {
           </select>
           {form.repeatability === 'cooldown' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ color: '#8891b0', fontSize: '12px' }}>Cooldown 回合数：</span>
+              <span style={{ color: '#444', fontSize: '12px' }}>Cooldown 回合数：</span>
               <input
                 type="number" min={1}
                 value={form.cooldown ?? 5}
@@ -308,10 +307,10 @@ function EffectsTab({ form, set }: { form: Storylet; set: SetFn }) {
       {form.effects.length === 0 && <div style={emptyHint}>无后置效果</div>}
 
       {form.effects.map((e, i) => (
-        <div key={i} style={{
+        <div key={i} className="bevel-in" style={{
           display: 'flex', gap: '8px', alignItems: 'center',
-          background: '#131828', border: '1px solid #2e3250',
-          borderRadius: '8px', padding: '10px',
+          background: '#ffffff',
+          padding: '8px',
         }}>
           <select
             value={e.type}
@@ -362,9 +361,9 @@ function ScheduleTab({ form, set }: { form: Storylet; set: SetFn }) {
             <input
               type="checkbox" checked={form.sticky}
               onChange={(e) => set('sticky', e.target.checked)}
-              style={{ width: '16px', height: '16px', accentColor: '#f5a623' }}
+              style={{ width: '16px', height: '16px', accentColor: '#000080' }}
             />
-            <span style={{ color: '#8891b0', fontSize: '12px' }}>一旦触发持续置顶</span>
+            <span style={{ color: '#444', fontSize: '12px' }}>一旦触发持续置顶</span>
           </label>
         </Field>
         <Field label="优先级覆盖 (priority_override)" style={{ flex: 1 }}>
@@ -418,9 +417,9 @@ function SalienceTab({ form, set }: { form: Storylet; set: SetFn }) {
           <input
             type="range" min={0} max={20} value={base}
             onChange={(e) => setBase(Number(e.target.value))}
-            style={{ flex: 1, accentColor: '#4f6ef7' }}
+            style={{ flex: 1, accentColor: '#000080' }}
           />
-          <span style={{ color: '#4f6ef7', fontWeight: 700, fontSize: '18px', minWidth: '30px' }}>
+          <span style={{ color: '#000080', fontWeight: 700, fontSize: '18px', minWidth: '30px' }}>
             {base}
           </span>
         </div>
@@ -428,11 +427,11 @@ function SalienceTab({ form, set }: { form: Storylet; set: SetFn }) {
 
       <div>
         <div style={{
-          color: '#8891b0', fontSize: '11px', marginBottom: '10px', fontWeight: 500,
+          color: '#444', fontSize: '11px', marginBottom: '10px', fontWeight: 600,
           display: 'flex', justifyContent: 'space-between',
         }}>
           <span>修正器 (modifiers)</span>
-          <span style={{ color: '#4a5070' }}>world_state_key ≥ threshold → +bonus / -penalty</span>
+          <span style={{ color: '#808080' }}>world_state_key ≥ threshold → +bonus / -penalty</span>
         </div>
 
         {mods.length === 0 && <div style={emptyHint}>无修正器（使用固定基础分）</div>}
@@ -456,12 +455,12 @@ function SalienceTab({ form, set }: { form: Storylet; set: SetFn }) {
             <input
               type="number" value={m.bonus}
               onChange={(e) => updateMod(i, { bonus: Number(e.target.value) })}
-              style={{ ...inputStyle, fontSize: '11px', color: '#2ecc71' }} placeholder="+bonus"
+              style={{ ...inputStyle, fontSize: '11px', color: '#008000' }} placeholder="+bonus"
             />
             <input
               type="number" value={m.penalty}
               onChange={(e) => updateMod(i, { penalty: Number(e.target.value) })}
-              style={{ ...inputStyle, fontSize: '11px', color: '#e74c3c' }} placeholder="-penalty"
+              style={{ ...inputStyle, fontSize: '11px', color: '#FF0000' }} placeholder="-penalty"
             />
             <button onClick={() => removeMod(i)} style={removeBtnStyle}>×</button>
           </div>
@@ -482,7 +481,7 @@ function CompletionTab({ form, set }: { form: Storylet; set: SetFn }) {
         onChange={(v) => set('completion_trigger', v ?? undefined)}
       />
 
-      <div style={{ paddingTop: '8px', borderTop: '1px solid #2e3250' }}>
+      <div style={{ paddingTop: '8px', borderTop: '2px solid #808080' }}>
         <SectionHint>force_wrap_up：满足条件时强制结束并切换到下一个 Storylet</SectionHint>
         <div style={{ marginTop: '8px' }}>
           <TriggerEditor
@@ -507,19 +506,19 @@ function TriggerEditor({
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-        <span style={{ color: '#8891b0', fontSize: '12px', fontWeight: 500 }}>{label}</span>
+        <span style={{ color: '#444', fontSize: '12px', fontWeight: 600 }}>{label}</span>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
           <input
             type="checkbox" checked={enabled}
             onChange={(e) => onChange(e.target.checked ? { type: 'turn_count', value: 5 } : null)}
-            style={{ accentColor: '#2ecc71' }}
+            style={{ accentColor: '#000080' }}
           />
-          <span style={{ color: '#4a5070', fontSize: '11px' }}>启用</span>
+          <span style={{ color: '#808080', fontSize: '11px' }}>启用</span>
         </label>
       </div>
 
       {enabled && value && (
-        <div style={{ display: 'flex', gap: '8px', padding: '10px', background: '#131828', borderRadius: '8px', border: '1px solid #2e3250' }}>
+        <div className="bevel-in" style={{ display: 'flex', gap: '8px', padding: '8px', background: '#ffffff' }}>
           <select
             value={value.type}
             onChange={(e) => onChange({ ...value, type: e.target.value as 'turn_count' | 'flag_check' | 'quality_check' })}
@@ -571,14 +570,14 @@ function Row({ children }: { children: React.ReactNode }) {
 function Field({ label, children, style }: { label: string; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div style={style}>
-      <div style={{ color: '#8891b0', fontSize: '11px', marginBottom: '5px', fontWeight: 500 }}>{label}</div>
+      <div style={{ color: '#444', fontSize: '11px', marginBottom: '5px', fontWeight: 600 }}>{label}</div>
       {children}
     </div>
   )
 }
 
 function SectionHint({ children }: { children: React.ReactNode }) {
-  return <div style={{ color: '#4a5070', fontSize: '11px', lineHeight: 1.5 }}>{children}</div>
+  return <div style={{ color: '#808080', fontSize: '11px', lineHeight: 1.5 }}>{children}</div>
 }
 
 function TagInput({ tags, onChange, placeholder }: { tags: string[]; onChange: (t: string[]) => void; placeholder?: string }) {
@@ -587,15 +586,15 @@ function TagInput({ tags, onChange, placeholder }: { tags: string[]; onChange: (
     <div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '6px' }}>
         {tags.map((t) => (
-          <span key={t} style={{
-            background: '#1e2a4a', border: '1px solid #2e3a60',
-            borderRadius: '4px', padding: '2px 8px',
-            fontSize: '11px', color: '#7090e0',
+          <span key={t} className="bevel-out" style={{
+            background: '#d0d0ff',
+            padding: '1px 6px',
+            fontSize: '11px', color: '#000080',
             display: 'flex', alignItems: 'center', gap: '4px',
           }}>
             {t}
             <button onClick={() => onChange(tags.filter((x) => x !== t))}
-              style={{ background: 'none', border: 'none', color: '#4a5070', cursor: 'pointer', fontSize: '13px' }}>×</button>
+              style={{ background: 'none', border: 'none', color: '#808080', cursor: 'pointer', fontSize: '13px', lineHeight: 1 }}>×</button>
           </span>
         ))}
       </div>
@@ -617,6 +616,6 @@ function TagInput({ tags, onChange, placeholder }: { tags: string[]; onChange: (
 }
 
 const emptyHint: React.CSSProperties = {
-  color: '#4a5070', fontSize: '12px', textAlign: 'center',
-  padding: '16px', border: '1px dashed #2e3250', borderRadius: '6px',
+  color: '#808080', fontSize: '12px', textAlign: 'center',
+  padding: '16px', border: '1px dashed #808080',
 }

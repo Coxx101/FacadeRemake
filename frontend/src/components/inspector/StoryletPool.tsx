@@ -8,7 +8,6 @@ const BLANK_STORYLET: Omit<Storylet, 'id'> = {
   phase_tags: [],
   narrative_goal: '',
   conditions: [],
-  llm_trigger: undefined,
   content: {},
   effects: [],
   conditional_effects: [],
@@ -125,7 +124,7 @@ function StoryletCard({
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const condCount = storylet.conditions.length + (storylet.llm_trigger ? 1 : 0)
+  const condCount = storylet.conditions.length
 
   return (
     <div className="bevel-out" style={{
@@ -179,7 +178,6 @@ function StoryletCard({
       <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
         <Badge color="#0000FF" label={`base ${storylet.salience.base}`} />
         {condCount > 0 && <Badge color="#FF8000" label={`cond ${condCount}`} />}
-        {storylet.llm_trigger && <Badge color="#00AA00" label="llm_trigger" />}
         {storylet.repeatability !== 'never' && <Badge color="#FF8000" label={storylet.repeatability} />}
       </div>
     </div>

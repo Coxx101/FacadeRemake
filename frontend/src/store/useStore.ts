@@ -306,14 +306,11 @@ export const useStore = create<StoreState>()(
         if (!source) return
         if (source.transitions.some((t) => t.target_id === targetId)) return
         if (sourceId === targetId) return
-        source.transitions.push({
-          target_id: targetId,
-          conditions: [],
-          turn_limit: undefined,
-          storylet_count: undefined,
-          is_fallback: false,
-          label: '',
-        })
+          source.transitions.push({
+            target_id: targetId,
+            conditions: [],
+            label: '',
+          })
         s.isDirty = true
       })
     },
