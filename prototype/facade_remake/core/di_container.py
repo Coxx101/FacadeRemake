@@ -266,10 +266,11 @@ class DIContainer:
                 agent.set_debug(self.debug_mode)
                 self.register_character_agent(char_id, agent)
         
-        # 更新 director 和 input_parser 使用新数据
+        # 更新 director / input_parser / state_manager 使用新 WorldState
         self._director = None
         self._input_parser = None
         self._story_selector = None
+        self._state_manager = None
 
     def _init_location_manager(self, scene_data: Dict) -> None:
         """初始化位置管理器"""

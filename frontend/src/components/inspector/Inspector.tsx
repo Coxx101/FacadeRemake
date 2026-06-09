@@ -122,6 +122,7 @@ function PropertiesTab({
   onUpdate: (id: string, patch: Partial<Landmark>) => void
 }) {
   const [form, setForm] = useState({ ...landmark })
+  const storylets = useStore((s) => s.storylets)
 
   useEffect(() => { setForm({ ...landmark }) }, [landmark.id])
 
@@ -180,6 +181,18 @@ function PropertiesTab({
             />
             <span style={{ color: '#444', fontSize: '12px' }}>is_ending</span>
           </label>
+        </Field>
+        <Field label="兜底 Storylet (fallback)" style={{ flex: 1 }}>
+          <select
+            value={form.fallback_storylet ?? ''}
+            onChange={(e) => { set('fallback_storylet', e.target.value || undefined); setTimeout(save, 50) }}
+            style={selectStyle}
+          >
+            <option value="">无</option>
+            {storylets.map(s => (
+              <option key={s.id} value={s.id}>{s.title} ({s.id})</option>
+            ))}
+          </select>
         </Field>
       </div>
 

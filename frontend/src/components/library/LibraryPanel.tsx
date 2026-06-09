@@ -7,8 +7,13 @@ import type {
   PropEntry,
   LocationEntry,
 } from '../../types'
+import ImageUpload from '../shared/ImageUpload'
 
 type LibraryTab = 'actions' | 'expressions' | 'props' | 'locations'
+
+// ── 新增项 ID 计数器（模块级，避免重置）──
+let _idCounter = 0
+const _nextId = (prefix: string) => `${prefix}_${Date.now()}_${_idCounter++}`
 
 // ── 90s Library 输入框样式 ──
 const libInputStyle: React.CSSProperties = {
@@ -50,43 +55,36 @@ export default function LibraryPanel() {
   const updateLocation = useStore((s: StoreState) => s.updateLocation)
   const deleteLocation = useStore((s: StoreState) => s.deleteLocation)
 
+  // 位置编辑器需要的其他数据
+  const characters = useStore((s: StoreState) => s.characters)
+  const characterIds = characters.map(c => c.id)
+  const propIds = propLibrary.map(p => p.id)
+
   // 新增动作
   const handleAddAction = useCallback(() => {
-    const id = `action_${Date.now()}`
     addAction({
-      id,
-      label: '新动作',
-      description: '',
-      parameters: [],
+      id: _nextId('action'), label: '新动作', description: '', parameters: [],
     })
   }, [addAction])
 
   // 新增表情
   const handleAddExpression = useCallback(() => {
-    const id = `expr_${Date.now()}`
     addExpression({
-      id,
-      label: '新表情',
-      animation_name: '',
+      id: _nextId('expr'), label: '新表情', animation_name: '',
     })
   }, [addExpression])
 
   // 新增物品
   const handleAddProp = useCallback(() => {
-    const id = `prop_${Date.now()}`
     addProp({
-      id,
-      label: '新物品',
+      id: _nextId('prop'), label: '新物品',
     })
   }, [addProp])
 
   // 新增地点
   const handleAddLocation = useCallback(() => {
-    const id = `loc_${Date.now()}`
     addLocation({
-      id,
-      label: '新地点',
-      adjacent: [],
+      id: _nextId('loc'), label: '新地点', adjacent: [], description: '', characters: [], props: [],
     })
   }, [addLocation])
 
@@ -199,6 +197,9 @@ export default function LibraryPanel() {
             location={loc}
             onUpdate={updateLocation}
             onDelete={deleteLocation}
+            allLocations={locationLibrary}
+            characterIds={characterIds}
+            propIds={propIds}
           />
         ))}
         {locationLibrary.length === 0 && (
@@ -286,39 +287,36 @@ function ActionItem({
     <div className="bevel-out" style={{ background: '#C0C0C0', padding: '10px', marginBottom: '6px' }}>
       {/* 标题行 */}
       <div className="panel-header" style={{ margin: '-10px -10px 8px', padding: '4px 8px', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '11px' }}>动作 · {action.id}</span>
+        <span style={{ fontSize: '11px' }}>动作</span>
         <button onClick={() => onDelete(action.id)}
           className="title-bar-btn" style={{ width: '16px', height: '14px', fontSize: '9px' }}
         >×</button>
       </div>
 
+      {/* ID（LLM 命令名） */}
+      <Field label="ID（LLM 命令名，如 walk_to）">
+        <input value={action.id} onChange={(e) => onUpdate(action.id, { id: e.target.value })}
+          placeholder="walk_to" style={libInputStyle} />
+      </Field>
+
       {/* 名称 */}
-      <div style={{ marginBottom: '6px' }}>
-        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>名称</div>
+      <Field label="名称">
         <input value={action.label} onChange={(e) => onUpdate(action.id, { label: e.target.value })}
-          placeholder="动作名称"
-          style={libInputStyle}
-        />
-      </div>
+          placeholder="动作名称" style={libInputStyle} />
+      </Field>
 
       {/* 描述 */}
-      <div style={{ marginBottom: '6px' }}>
-        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>描述</div>
+      <Field label="描述">
         <textarea value={action.description} onChange={(e) => onUpdate(action.id, { description: e.target.value })}
-          rows={2} placeholder="描述这个动作"
-          style={{ ...libInputStyle, resize: 'vertical' }}
-        />
-      </div>
+          rows={2} placeholder="描述这个动作" style={{ ...libInputStyle, resize: 'vertical' }} />
+      </Field>
 
       {/* 参数 */}
-      <div>
-        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>参数（逗号分隔）</div>
+      <Field label="参数（逗号分隔）">
         <input value={action.parameters.join(', ')}
           onChange={(e) => onUpdate(action.id, { parameters: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-          placeholder="param1, param2"
-          style={libInputStyle}
-        />
-      </div>
+          placeholder="param1, param2" style={libInputStyle} />
+      </Field>
     </div>
   )
 }
@@ -335,21 +333,23 @@ function ExpressionItem({
   return (
     <div className="bevel-out" style={{ background: '#C0C0C0', padding: '10px', marginBottom: '6px' }}>
       <div className="panel-header" style={{ margin: '-10px -10px 8px', padding: '4px 8px', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '11px' }}>表情 · {expression.id}</span>
+        <span style={{ fontSize: '11px' }}>表情</span>
         <button onClick={() => onDelete(expression.id)}
           className="title-bar-btn" style={{ width: '16px', height: '14px', fontSize: '9px' }}
         >×</button>
       </div>
-      <div style={{ marginBottom: '6px' }}>
-        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>名称</div>
+      <Field label="ID（LLM 命令名，如 happy）">
+        <input value={expression.id} onChange={(e) => onUpdate(expression.id, { id: e.target.value })}
+          placeholder="happy" style={libInputStyle} />
+      </Field>
+      <Field label="名称">
         <input value={expression.label} onChange={(e) => onUpdate(expression.id, { label: e.target.value })}
           placeholder="表情名称" style={libInputStyle} />
-      </div>
-      <div>
-        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>动画名称</div>
+      </Field>
+      <Field label="动画名称">
         <input value={expression.animation_name} onChange={(e) => onUpdate(expression.id, { animation_name: e.target.value })}
           placeholder="animation_name" style={libInputStyle} />
-      </div>
+      </Field>
     </div>
   )
 }
@@ -366,16 +366,19 @@ function PropItem({
   return (
     <div className="bevel-out" style={{ background: '#C0C0C0', padding: '10px', marginBottom: '6px' }}>
       <div className="panel-header" style={{ margin: '-10px -10px 8px', padding: '4px 8px', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '11px' }}>物品 · {prop.id}</span>
+        <span style={{ fontSize: '11px' }}>物品</span>
         <button onClick={() => onDelete(prop.id)}
           className="title-bar-btn" style={{ width: '16px', height: '14px', fontSize: '9px' }}
         >×</button>
       </div>
-      <div>
-        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>名称</div>
+      <Field label="ID（LLM 命令名，如 wine_glass）">
+        <input value={prop.id} onChange={(e) => onUpdate(prop.id, { id: e.target.value })}
+          placeholder="wine_glass" style={libInputStyle} />
+      </Field>
+      <Field label="名称">
         <input value={prop.label} onChange={(e) => onUpdate(prop.id, { label: e.target.value })}
           placeholder="物品名称" style={libInputStyle} />
-      </div>
+      </Field>
     </div>
   )
 }
@@ -384,30 +387,159 @@ function LocationItem({
   location,
   onUpdate,
   onDelete,
+  allLocations,
+  characterIds,
+  propIds,
 }: {
   location: LocationEntry,
   onUpdate: (id: string, patch: Partial<LocationEntry>) => void,
   onDelete: (id: string) => void,
+  allLocations: LocationEntry[],
+  characterIds: string[],
+  propIds: string[],
 }) {
+  const toggleAdjacent = (lid: string) => {
+    const current = location.adjacent || []
+    const next = current.includes(lid) ? current.filter(x => x !== lid) : [...current, lid]
+    onUpdate(location.id, { adjacent: next })
+  }
+  const toggleCharacters = (cid: string) => {
+    const current = location.characters || []
+    const next = current.includes(cid) ? current.filter(x => x !== cid) : [...current, cid]
+    onUpdate(location.id, { characters: next })
+  }
+  const toggleProps = (pid: string) => {
+    const current = location.props || []
+    const next = current.includes(pid) ? current.filter(x => x !== pid) : [...current, pid]
+    onUpdate(location.id, { props: next })
+  }
+
   return (
     <div className="bevel-out" style={{ background: '#C0C0C0', padding: '10px', marginBottom: '6px' }}>
       <div className="panel-header" style={{ margin: '-10px -10px 8px', padding: '4px 8px', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '11px' }}>地点 · {location.id}</span>
+        <span style={{ fontSize: '11px' }}>📍 地点</span>
         <button onClick={() => onDelete(location.id)}
           className="title-bar-btn" style={{ width: '16px', height: '14px', fontSize: '9px' }}
         >×</button>
       </div>
-      <div style={{ marginBottom: '6px' }}>
-        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>名称</div>
+
+      {/* ID */}
+      <Field label="ID（LLM 命令名，如 kitchen）">
+        <input value={location.id} onChange={(e) => onUpdate(location.id, { id: e.target.value })}
+          placeholder="kitchen" style={libInputStyle} />
+      </Field>
+
+      {/* 名称 */}
+      <Field label="名称">
         <input value={location.label} onChange={(e) => onUpdate(location.id, { label: e.target.value })}
-          placeholder="地点名称" style={libInputStyle} />
+          placeholder="如：厨房" style={libInputStyle} />
+      </Field>
+
+      {/* 描述 */}
+      <Field label="场景描述（叙事上下文）">
+        <textarea value={location.description || ''}
+          onChange={(e) => onUpdate(location.id, { description: e.target.value })}
+          placeholder="如：干净整洁的开放式厨房，灶台上还放着今晚的食材"
+          rows={2}
+          style={{ ...libInputStyle, resize: 'vertical' }}
+        />
+      </Field>
+
+      {/* 背景图 */}
+      <Field label="场景背景图">
+        <ImageUpload
+          value={location.background_url}
+          onChange={(url) => onUpdate(location.id, { background_url: url })}
+          width={200} height={110}
+          placeholder="上传背景图"
+        />
+      </Field>
+
+      {/* 相邻地点 */}
+      <Field label={`相邻地点（${(location.adjacent || []).length} 个）`}>
+        <div className="bevel-in" style={{
+          background: '#fff', maxHeight: 110, overflowY: 'auto',
+          padding: '4px 6px', fontSize: '11px',
+        }}>
+          {allLocations.filter(l => l.id !== location.id).map(loc => (
+            <label key={loc.id} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '2px 0', cursor: 'pointer',
+            }}>
+              <input type="checkbox"
+                checked={(location.adjacent || []).includes(loc.id)}
+                onChange={() => toggleAdjacent(loc.id)}
+                style={{ accentColor: '#000080' }}
+              />
+              <span>{loc.label}</span>
+              <span style={{ color: '#808080', fontSize: 10, marginLeft: 'auto' }}>{loc.id}</span>
+            </label>
+          ))}
+          {allLocations.length <= 1 && (
+            <span style={{ color: '#808080', fontStyle: 'italic' }}>暂无其他地点可连接</span>
+          )}
+        </div>
+      </Field>
+
+      {/* 角色 */}
+      <Field label={`可互动角色（${(location.characters || []).length} 个）`}>
+        <div className="bevel-in" style={{
+          background: '#fff', maxHeight: 90, overflowY: 'auto',
+          padding: '4px 6px', fontSize: '11px',
+        }}>
+          {characterIds.length > 0 ? characterIds.map(cid => (
+            <label key={cid} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '2px 0', cursor: 'pointer',
+            }}>
+              <input type="checkbox"
+                checked={(location.characters || []).includes(cid)}
+                onChange={() => toggleCharacters(cid)}
+                style={{ accentColor: '#000080' }}
+              />
+              <span>{cid}</span>
+            </label>
+          )) : (
+            <span style={{ color: '#808080', fontStyle: 'italic' }}>暂无可选角色</span>
+          )}
+        </div>
+      </Field>
+
+      {/* 物品 */}
+      <Field label={`物品（${(location.props || []).length} 个）`}>
+        <div className="bevel-in" style={{
+          background: '#fff', maxHeight: 90, overflowY: 'auto',
+          padding: '4px 6px', fontSize: '11px',
+        }}>
+          {propIds.length > 0 ? propIds.map(pid => (
+            <label key={pid} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '2px 0', cursor: 'pointer',
+            }}>
+              <input type="checkbox"
+                checked={(location.props || []).includes(pid)}
+                onChange={() => toggleProps(pid)}
+                style={{ accentColor: '#000080' }}
+              />
+              <span>{pid}</span>
+            </label>
+          )) : (
+            <span style={{ color: '#808080', fontStyle: 'italic' }}>暂无可选物品</span>
+          )}
+        </div>
+      </Field>
+    </div>
+  )
+}
+
+// ── 表单字段包装 ──
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: 2, fontFamily: '"MS Sans Serif",sans-serif' }}>
+        {label}
       </div>
-      <div>
-        <div style={{ color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '2px', fontFamily: '"MS Sans Serif",sans-serif' }}>相邻地点（逗号分隔）</div>
-        <input value={(location.adjacent || []).join(', ')}
-          onChange={(e) => onUpdate(location.id, { adjacent: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-          placeholder="living_room, kitchen" style={libInputStyle} />
-      </div>
+      {children}
     </div>
   )
 }

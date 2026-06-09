@@ -1,17 +1,63 @@
-"""输出工具 — 当前实现为 print()，未来替换为 WebSocket 推送"""
-import sys
+"""输出工具 v2.0 — CLI 格式化打印，无硬编码场景数据
+
+  所有标签/名称从 scenario_config 读取，通过 init_labels() 初始化。
+  若未初始化则使用默认空映射（key→key）。
+"""
 import re
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List, Optional
+
+# ── 由 init_labels() 填充的映射表 ────────────────────────────────────
+_action_labels: Dict[str, str] = {}
+_expression_labels: Dict[str, str] = {}
+_location_labels: Dict[str, str] = {}
+_prop_labels: Dict[str, str] = {}
+_character_labels: Dict[str, str] = {}
+_quality_labels: Dict[str, str] = {}
 
 
-def game_banner():
+def init_labels(config: Optional[Any] = None):
+    """从 scenario_config 初始化所有标签映射。
+
+    调用时机: 引擎启动后、CLI 循环进入前。
+    若 config 为 None 则清空所有映射（回退到 key→key 显示）。
+    """
+    global _action_labels, _expression_labels, _location_labels
+    global _prop_labels, _character_labels, _quality_labels
+
+    if config is None:
+        _action_labels = {}
+        _expression_labels = {}
+        _location_labels = {}
+        _prop_labels = {}
+        _character_labels = {}
+        _quality_labels = {}
+        return
+
+    _action_labels = {a.id: getattr(a, 'label', a.id) for a in getattr(config, 'action_library', [])}
+    _expression_labels = {e.id: getattr(e, 'label', e.id) for e in getattr(config, 'expression_library', [])}
+    _location_labels = {l.id: getattr(l, 'label', l.id) for l in getattr(config, 'location_library', [])}
+    _prop_labels = {p.id: getattr(p, 'label', p.id) for p in getattr(config, 'prop_library', [])}
+    _character_labels = {}
+    for c in getattr(config, 'characters', []):
+        name = getattr(c, 'display_name', '') or getattr(c, 'name', '') or c.id
+        _character_labels[c.id] = name
+    _quality_labels = {}
+    wsd = getattr(config, 'world_state_schema', {}) or {}
+    for q in wsd.get('qualities', []):
+        _quality_labels[q.get('key', '')] = q.get('label', q.get('key', ''))
+
+
+# ── 公共输出函数 ─────────────────────────────────────────────────────
+
+def game_banner(config: Optional[Any] = None):
+    """打印游戏启动横幅（从 config 读取场景描述）"""
     print("=" * 60)
     print("FacadeRemake 原型")
-    print("基于 LLM + Storylet + BeatPlan 架构的互动叙事系统")
+    if config and hasattr(config, 'scene_name'):
+        print(f"  {config.scene_name}")
+    else:
+        print("  基于 LLM + Storylet + BeatPlan 架构的互动叙事系统")
     print("=" * 60)
-    print()
-    print("情境：你受邀到老友 Trip 和 Grace 家中做客。")
-    print("气氛似乎有些微妙...")
     print()
     print("输入 'quit' 退出，'status' 查看状态")
     print("-" * 60)
@@ -22,109 +68,61 @@ def character_speaking_hint(display_name: str):
     print(f"\n（{display_name} 似乎想说什么……）")
 
 
-def _parse_action_sequence(actions: str) -> str:
-    """将结构化动作序列转为可读中文描述
+def _label(key: str, mapping: Dict[str, str]) -> str:
+    return mapping.get(key, key)
 
-    格式示例：walk_to[living_room]gesture[come_here]say[]happy
-    - 解析动作ID + 参数（如 walk_to[living_room]）
-    - 识别表情（如 happy 在最后）
+
+def _parse_action_sequence(actions: str) -> str:
+    """将结构化动作序列转为可读中文描述。
+
+    格式: walk_to[living_room]come_here[]happy
+    - 动作/表情/地点/物品/角色均从 init_labels() 填充的映射表读取
     """
     if not actions:
         return ""
-
-    # 动作 ID 到中文的映射
-    action_map = {
-        "walk_to": "走向", "pick_up": "拿起", "put_down": "放下", "give": "递给",
-        "look_at": "看向", "sit_down": "坐下", "stand_up": "站起来", "pour": "倒",
-        "drink": "喝", "sigh": "叹气", "laugh": "笑", "pause": "停顿",
-        "open_arm": "张开双臂", "gesture": "做手势", "exit": "离开", "wave": "挥手",
-        "shake": "摇头", "nod": "点头", "touch": "触碰", "embrace": "拥抱",
-        "push": "推开", "point": "指向", "lean": "倚靠",
-    }
-
-    # 表情 ID 到中文的映射
-    expression_map = {
-        "neutral": "（平静）", "happy": "（开心）", "sad": "（难过）",
-        "angry": "（生气）", "thinking": "（思考）", "embarrassed": "（尴尬）",
-        "smirk": "（坏笑）", "confused": "（困惑）", "nervous": "（紧张）",
-        "smiling": "（微笑）", "laughing": "（大笑）", "frowning": "（皱眉）",
-        "worried": "（担忧）",
-    }
-
-    # 地点 ID 到中文的映射
-    location_map = {
-        "living_room": "客厅", "kitchen": "厨房", "dining_room": "餐厅",
-        "balcony": "阳台", "entrance": "门口", "sofa": "沙发", "window": "窗户",
-    }
-
-    # 物品 ID 到中文的映射
-    prop_map = {
-        "wine_glass": "酒杯", "bottle": "酒瓶", "plate": "盘子",
-        "napkin": "餐巾", "cushion": "靠垫", "remote": "遥控器",
-    }
-
-    result_parts = []
-
-    # 用正则匹配完整的动作格式: action[param]
-    # 例如 "walk_to[living_room]" -> match ("walk_to", "living_room")
+    result: list[str] = []
     pattern = r'([a-z_]+)\[([^\]]*)\]'
     matches = re.findall(pattern, actions.lower())
 
-    # 检查是否有结尾的表情（不在方括号内）
     last_bracket_pos = actions.rfind(']')
     suffix = actions[last_bracket_pos + 1:].strip().lower() if last_bracket_pos >= 0 else actions.lower()
 
     for action_id, param in matches:
-        # 检查是否是表情
-        if action_id in expression_map:
-            result_parts.append(expression_map[action_id])
+        if action_id in _expression_labels:
+            result.append(f"（{_label(action_id, _expression_labels)}）")
+            continue
+        if action_id not in _action_labels or action_id in ("say", "gesture"):
             continue
 
-        # 检查是否是已知动作
-        if action_id not in action_map:
-            continue
-
-        action_desc = action_map[action_id]
-
-        # 跳过 say[]（台词在 dialogue 字段）和 gesture[]（手势不显示）
-        if action_id in ("say", "gesture"):
-            continue
-
+        action_desc = _label(action_id, _action_labels)
         param = param.strip().lower()
-        param_is_target = False
 
-        # 检查参数是否是目标（角色名）
-        if param in ("player", "grace", "trip"):
-            target_map = {"player": "玩家", "grace": "Grace", "trip": "Trip"}
-            result_parts.append(f"给{target_map[param]}")
-            param_is_target = True
-
-        # 根据动作类型处理参数
-        if not param_is_target:
-            if action_id == "walk_to" and param in location_map:
-                result_parts.append(f"{action_desc}{location_map[param]}")
-            elif action_id in ("pick_up", "pour") and param in prop_map:
-                result_parts.append(f"{action_desc}{prop_map[param]}")
-            elif action_id == "look_at":
-                # look_at 可以是地点或物品
-                target = location_map.get(param, prop_map.get(param, param))
-                result_parts.append(f"{action_desc}{target}")
-            elif param:
-                result_parts.append(f"{action_desc} {param}")
+        if action_id == "walk_to":
+            result.append(f"{action_desc}{_label(param, _location_labels)}")
+        elif action_id in ("pick_up", "pour"):
+            result.append(f"{action_desc}{_label(param, _prop_labels)}")
+        elif action_id == "look_at":
+            target = _location_labels.get(param, _prop_labels.get(param, param))
+            result.append(f"{action_desc}{target}")
+        elif param:
+            if param in _character_labels:
+                result.append(f"给{_label(param, _character_labels)}")
             else:
-                result_parts.append(action_desc)
+                result.append(f"{action_desc} {param}")
+        else:
+            result.append(action_desc)
 
-    # 检查结尾的表情（不在方括号内的内容）
     suffix = suffix.strip().lower()
-    if suffix and suffix in expression_map:
-        expr = expression_map[suffix]
-        if expr not in result_parts:
-            result_parts.append(expr)
+    if suffix and suffix in _expression_labels:
+        expr = f"（{_label(suffix, _expression_labels)}）"
+        if expr not in result:
+            result.append(expr)
 
-    return "".join(result_parts)
+    return "".join(result)
 
 
-def character_line(character: str, speech: str, action: str = "", thought: str = "", debug: bool = False):
+def character_line(character: str, speech: str, action: str = "",
+                   thought: str = "", debug: bool = False):
     if thought and debug:
         print(f"\n  [thought] [{character} 内心] {thought}")
     if speech and action:
@@ -152,14 +150,12 @@ def narrator_text(content: str):
 
 
 def state_change(delta: Dict[str, int], current_values: Dict[str, int], hint: str = ""):
-    display_map = {"tension": "⚡ 张力", "grace_comfort": "💔 Grace 舒适度",
-                   "trip_comfort": "💔 Trip 舒适度"}
     nonzero = {k: v for k, v in delta.items() if v != 0}
     if not nonzero and not hint:
         return
     parts = []
     for key, val in nonzero.items():
-        label = display_map.get(key, key)
+        label = _label(key, _quality_labels)
         sign = "+" if val > 0 else ""
         current = current_values.get(key, 0)
         parts.append(f"{label} {sign}{val}  (当前: {current}/10)")
@@ -167,7 +163,7 @@ def state_change(delta: Dict[str, int], current_values: Dict[str, int], hint: st
         print()
         print("    " + "  ".join(parts))
         if hint:
-            print(f"    ─────────────────────")
+            print(f"    {'─' * 30}")
             print(f"    {hint}")
     elif hint:
         print(f"    {hint}")
@@ -190,10 +186,10 @@ def nudge_message(display_name: str, text: str = "你怎么不说话了？"):
 
 
 def storylet_entered(title: str, narrative_goal: str):
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"[进入新场景: {title}]")
     print(f"叙事目标: {narrative_goal}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def storylet_ended(title: str):
@@ -205,19 +201,23 @@ def landmark_entered(title: str):
 
 
 def ending(landmark_title: str, description: str, ending_content: str,
-           total_turns: int, tension: int, trip_confessed: bool, grace_exposed: bool, player_mediated: bool):
-    print(f"\n{'='*60}")
+           total_turns: int, qualities: Dict[str, float], flags: Dict[str, Any]):
+    """泛化结局打印 — 不再硬编码特定 flag 名称"""
+    print(f"\n{'=' * 60}")
     print(f"🏁 结局: {landmark_title}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"\n{description}\n")
     if ending_content:
         print(ending_content.strip())
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"\n[游戏结束 - 总回合数: {total_turns}]")
-    print(f"[tension 最终值: {tension}]")
-    print(f"[坦白路径: trip={trip_confessed}, grace={grace_exposed}]")
-    print(f"[玩家调解: {player_mediated}]")
-    print(f"{'='*60}\n")
+    for key, val in qualities.items():
+        label = _label(key, _quality_labels)
+        print(f"[{label}: {val}]")
+    true_flags = [k for k, v in flags.items() if v]
+    if true_flags:
+        print(f"[关键事件: {', '.join(true_flags)}]")
+    print(f"{'=' * 60}\n")
 
 
 def show_status(current_turn, landmark_id, landmark_title, landmark_desc,
@@ -238,7 +238,8 @@ def show_status(current_turn, landmark_id, landmark_title, landmark_desc,
     print("-" * 60)
     print("数值:")
     for key, val in qualities.items():
-        print(f"  {key}: {val}")
+        label = _label(key, _quality_labels)
+        print(f"  {label}: {val}")
     print("-" * 60)
     print("标记:")
     for flag, value in flags.items():

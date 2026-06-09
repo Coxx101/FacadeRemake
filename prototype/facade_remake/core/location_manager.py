@@ -13,9 +13,9 @@ class Location:
     label: str
     adjacent: List[str] = field(default_factory=list)
     description: str = ""
-    # 该地点可互动的角色列表
+    # 该地点可互动的初始角色列表
     characters: List[str] = field(default_factory=list)
-    # 该地点的物品列表
+    # 该地点的初始物品列表
     props: List[str] = field(default_factory=list)
 
 

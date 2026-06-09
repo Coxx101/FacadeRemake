@@ -2,12 +2,6 @@
 Storylet 模块 - v2.0
 定义和管理叙事单元
 
-变更：
-  - 新增 max_turns：最大交互回合数，闲聊兜底用
-  - 新增 tags：语义标签列表，供 InputParser Gate2 条件收集用
-  - 废弃 conditional_effects：条件效果已由 Gate2 + WorldState 驱动层统一处理
-  - 废弃 completion_trigger / force_wrap_up：职责合并到 max_turns
-  - 新增 StoryletManager.check_timeout() / force_complete()
 """
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
@@ -32,12 +26,6 @@ class Storylet:
 
     # ── v2.0 新增 ──
     max_turns: int = 8
-    tags: List[str] = field(default_factory=list)
-
-    # ── v2.0 废弃（保留字段只为数据兼容，运行时不再使用）──
-    conditional_effects: List[Dict[str, Any]] = field(default_factory=list)
-    completion_trigger: Optional[Dict[str, Any]] = None
-    force_wrap_up: Optional[Dict[str, Any]] = None
 
     # 调度
     repeatability: str = "never"
@@ -110,13 +98,7 @@ class Storylet:
             conditions=data.get("conditions", []),
             content=data.get("content", {}),
             effects=data.get("effects", []),
-            # v2.0
             max_turns=data.get("max_turns", 8),
-            tags=data.get("tags", []),
-            # v2.0 废弃但保留兼容
-            conditional_effects=data.get("conditional_effects", []),
-            completion_trigger=data.get("completion_trigger"),
-            force_wrap_up=data.get("force_wrap_up"),
             # 调度
             repeatability=data.get("repeatability", "never"),
             cooldown=data.get("cooldown"),
@@ -228,5 +210,8 @@ class StoryletManager:
     def load_from_dicts(self, data_list: List[Dict[str, Any]]):
         """从字典列表加载 Storylets"""
         for data in data_list:
-            storylet = Storylet.from_dict(data)
-            self.register(storylet)
+            try:
+                storylet = Storylet.from_dict(data)
+                self.register(storylet)
+            except Exception as e:
+                print(f"[Storylet] 加载失败 {data.get('id', '?')}: {e}")

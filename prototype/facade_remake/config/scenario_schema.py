@@ -34,6 +34,9 @@ class LocationEntry:
     id: str                    # "living_room"
     label: str                 # "客厅"
     adjacent: List[str] = field(default_factory=list)  # 相邻地点
+    description: str = ""      # 场景氛围描述
+    characters: List[str] = field(default_factory=list)  # 该地点的角色
+    props: List[str] = field(default_factory=list)       # 该地点的物品
 
 
 @dataclass

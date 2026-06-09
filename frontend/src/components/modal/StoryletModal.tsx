@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
-  ClipboardList, Lock, Zap, Timer, BarChart3, CheckCircle2,
+  ClipboardList, Lock, Zap, Sliders,
 } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import type { Storylet, Condition, WorldStateEffect, SalienceModifier } from '../../types'
@@ -11,9 +11,7 @@ const TABS = [
   { key: 'basic',      icon: <ClipboardList size={15} />, label: '基础' },
   { key: 'conditions', icon: <Lock size={15} />,         label: '条件' },
   { key: 'effects',    icon: <Zap size={15} />,          label: '效果' },
-  { key: 'schedule',   icon: <Timer size={15} />,        label: '调度' },
-  { key: 'salience',   icon: <BarChart3 size={15} />,    label: 'Salience' },
-  { key: 'completion', icon: <CheckCircle2 size={15} />, label: '完成' },
+  { key: 'schedule',   icon: <Sliders size={15} />,      label: '调度与分值' },
 ] as const
 
 type TabKey = typeof TABS[number]['key']
@@ -117,9 +115,7 @@ export default function StoryletModal() {
             {tab === 'basic'      && <BasicTab form={form} set={set} />}
             {tab === 'conditions' && <ConditionsTab form={form} set={set} />}
             {tab === 'effects'    && <EffectsTab form={form} set={set} />}
-            {tab === 'schedule'   && <ScheduleTab form={form} set={set} />}
-            {tab === 'salience'   && <SalienceTab form={form} set={set} />}
-            {tab === 'completion' && <CompletionTab form={form} set={set} />}
+            {tab === 'schedule'   && <ScheduleSalienceTab form={form} set={set} />}
           </div>
         </div>
 
@@ -189,14 +185,22 @@ function BasicTab({ form, set }: { form: Storylet; set: SetFn }) {
           />
         </Field>
       </Row>
-      <Row>
-        <Field label="Phase Tags">
+      <div style={{ display: 'flex', gap: '12px' }}>
+        <Field label="最大回合数 (max_turns)" style={{ flex: 1 }}>
+          <input
+            type="number" min={1} max={99}
+            value={form.max_turns ?? 8}
+            onChange={(e) => set('max_turns', Math.max(1, Number(e.target.value)))}
+            style={inputStyle}
+          />
+        </Field>
+        <Field label="Phase Tags" style={{ flex: 1 }}>
           <TagInput
             tags={form.phase_tags}
             onChange={(t) => set('phase_tags', t)}
           />
         </Field>
-      </Row>
+      </div>
     </div>
   )
 }
@@ -352,47 +356,9 @@ function EffectsTab({ form, set }: { form: Storylet; set: SetFn }) {
   )
 }
 
-function ScheduleTab({ form, set }: { form: Storylet; set: SetFn }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', gap: '12px' }}>
-        <Field label="粘性 (sticky)" style={{ flex: 1 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', cursor: 'pointer' }}>
-            <input
-              type="checkbox" checked={form.sticky}
-              onChange={(e) => set('sticky', e.target.checked)}
-              style={{ width: '16px', height: '16px', accentColor: '#000080' }}
-            />
-            <span style={{ color: '#444', fontSize: '12px' }}>一旦触发持续置顶</span>
-          </label>
-        </Field>
-        <Field label="优先级覆盖 (priority_override)" style={{ flex: 1 }}>
-          <input
-            type="number"
-            value={form.priority_override ?? ''}
-            onChange={(e) => set('priority_override', e.target.value ? Number(e.target.value) : undefined)}
-            style={inputStyle}
-            placeholder="默认（无覆盖）"
-          />
-        </Field>
-      </div>
+// ── 调度与分值（合并原 Schedule + Salience）──
 
-      <Field label="被打断时行为 (on_interrupt)">
-        <select
-          value={form.on_interrupt}
-          onChange={(e) => set('on_interrupt', e.target.value as Storylet['on_interrupt'])}
-          style={{ ...selectStyle, width: '100%' }}
-        >
-          <option value="pause">pause — 暂停，待下次继续</option>
-          <option value="abort">abort — 中止，不再触发</option>
-          <option value="continue">continue — 忽略打断继续</option>
-        </select>
-      </Field>
-    </div>
-  )
-}
-
-function SalienceTab({ form, set }: { form: Storylet; set: SetFn }) {
+function ScheduleSalienceTab({ form, set }: { form: Storylet; set: SetFn }) {
   const base = form.salience.base
   const mods = form.salience.modifiers
 
@@ -412,151 +378,102 @@ function SalienceTab({ form, set }: { form: Storylet; set: SetFn }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <Field label="基础分 (base)">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <input
-            type="range" min={0} max={20} value={base}
-            onChange={(e) => setBase(Number(e.target.value))}
-            style={{ flex: 1, accentColor: '#000080' }}
-          />
-          <span style={{ color: '#000080', fontWeight: 700, fontSize: '18px', minWidth: '30px' }}>
-            {base}
-          </span>
-        </div>
-      </Field>
-
-      <div>
-        <div style={{
-          color: '#444', fontSize: '11px', marginBottom: '10px', fontWeight: 600,
-          display: 'flex', justifyContent: 'space-between',
-        }}>
-          <span>修正器 (modifiers)</span>
-          <span style={{ color: '#808080' }}>world_state_key ≥ threshold → +bonus / -penalty</span>
-        </div>
-
-        {mods.length === 0 && <div style={emptyHint}>无修正器（使用固定基础分）</div>}
-
-        {mods.map((m, i) => (
-          <div key={i} style={{
-            display: 'grid', gridTemplateColumns: '1fr 70px 60px 60px 24px',
-            gap: '6px', marginBottom: '8px', alignItems: 'center',
-          }}>
-            <KeyInput
-              value={m.key} onChange={(key) => updateMod(i, { key })}
-              filter="quality"
-              style={{ fontSize: '11px' }}
-              placeholder="quality key"
-            />
-            <input
-              type="number" value={m.threshold}
-              onChange={(e) => updateMod(i, { threshold: Number(e.target.value) })}
-              style={{ ...inputStyle, fontSize: '11px' }} placeholder="≥"
-            />
-            <input
-              type="number" value={m.bonus}
-              onChange={(e) => updateMod(i, { bonus: Number(e.target.value) })}
-              style={{ ...inputStyle, fontSize: '11px', color: '#008000' }} placeholder="+bonus"
-            />
-            <input
-              type="number" value={m.penalty}
-              onChange={(e) => updateMod(i, { penalty: Number(e.target.value) })}
-              style={{ ...inputStyle, fontSize: '11px', color: '#FF0000' }} placeholder="-penalty"
-            />
-            <button onClick={() => removeMod(i)} style={removeBtnStyle}>×</button>
-          </div>
-        ))}
-        <button onClick={addMod} style={addBtnStyle}>+ 修正器</button>
-      </div>
-    </div>
-  )
-}
-
-function CompletionTab({ form, set }: { form: Storylet; set: SetFn }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <SectionHint>completion_trigger：满足条件时自动完成 Storylet</SectionHint>
-      <TriggerEditor
-        label="完成触发 (completion_trigger)"
-        value={form.completion_trigger ?? null}
-        onChange={(v) => set('completion_trigger', v ?? undefined)}
-      />
-
-      <div style={{ paddingTop: '8px', borderTop: '2px solid #808080' }}>
-        <SectionHint>force_wrap_up：满足条件时强制结束并切换到下一个 Storylet</SectionHint>
-        <div style={{ marginTop: '8px' }}>
-          <TriggerEditor
-            label="强制收尾 (force_wrap_up)"
-            value={form.force_wrap_up ?? null}
-            onChange={(v) => set('force_wrap_up', v ?? undefined)}
-          />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function TriggerEditor({
-  label, value, onChange,
-}: {
-  label: string
-  value: Storylet['completion_trigger'] | null
-  onChange: (v: Storylet['completion_trigger'] | null) => void
-}) {
-  const enabled = value !== null && value !== undefined
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-        <span style={{ color: '#444', fontSize: '12px', fontWeight: 600 }}>{label}</span>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-          <input
-            type="checkbox" checked={enabled}
-            onChange={(e) => onChange(e.target.checked ? { type: 'turn_count', value: 5 } : null)}
-            style={{ accentColor: '#000080' }}
-          />
-          <span style={{ color: '#808080', fontSize: '11px' }}>启用</span>
-        </label>
-      </div>
-
-      {enabled && value && (
-        <div className="bevel-in" style={{ display: 'flex', gap: '8px', padding: '8px', background: '#ffffff' }}>
-          <select
-            value={value.type}
-            onChange={(e) => onChange({ ...value, type: e.target.value as 'turn_count' | 'flag_check' | 'quality_check' })}
-            style={selectStyle}
-          >
-            <option value="turn_count">turn_count</option>
-            <option value="flag_check">flag_check</option>
-            <option value="quality_check">quality_check</option>
-          </select>
-          {value.type === 'turn_count' ? (
-            <input
-              type="number" min={1}
-              value={Number(value.value ?? 5)}
-              onChange={(e) => onChange({ ...value, value: Number(e.target.value) })}
-              style={{ ...inputStyle, width: '80px' }}
-              placeholder="回合数"
-            />
-          ) : (
-            <>
-              <KeyInput
-                value={value.key ?? ''} onChange={(key) => onChange({ ...value, key })}
-                filter={value.type === 'flag_check' ? 'flag' : value.type === 'quality_check' ? 'quality' : undefined}
-                placeholder="key"
-              />
-              <select
-                value={value.op ?? '=='} onChange={(e) => onChange({ ...value, op: e.target.value })}
-                style={selectStyle}
-              >
-                {['==', '!=', '>', '>=', '<', '<='].map((op) => <option key={op} value={op}>{op}</option>)}
-              </select>
+      {/* ── 调度 ── */}
+      <div style={{ paddingBottom: '12px', borderBottom: '2px solid #808080' }}>
+        <div style={{ color: '#444', fontSize: '12px', fontWeight: 700, marginBottom: '10px' }}>调度</div>
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '10px' }}>
+          <Field label="粘性 (sticky)" style={{ flex: 1 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', cursor: 'pointer' }}>
               <input
-                value={String(value.value ?? '')} onChange={(e) => onChange({ ...value, value: e.target.value })}
-                style={{ ...inputStyle, width: '80px' }} placeholder="value"
+                type="checkbox" checked={form.sticky}
+                onChange={(e) => set('sticky', e.target.checked)}
+                style={{ width: '16px', height: '16px', accentColor: '#000080' }}
               />
-            </>
-          )}
+              <span style={{ color: '#444', fontSize: '12px' }}>一旦触发持续置顶</span>
+            </label>
+          </Field>
+          <Field label="优先级覆盖" style={{ flex: 1 }}>
+            <input
+              type="number"
+              value={form.priority_override ?? ''}
+              onChange={(e) => set('priority_override', e.target.value ? Number(e.target.value) : undefined)}
+              style={inputStyle}
+              placeholder="默认（无覆盖）"
+            />
+          </Field>
         </div>
-      )}
+        <Field label="被打断时行为 (on_interrupt)">
+          <select
+            value={form.on_interrupt}
+            onChange={(e) => set('on_interrupt', e.target.value as Storylet['on_interrupt'])}
+            style={{ ...selectStyle, width: '100%' }}
+          >
+            <option value="pause">pause — 暂停，待下次继续</option>
+            <option value="abort">abort — 中止，不再触发</option>
+            <option value="continue">continue — 忽略打断继续</option>
+          </select>
+        </Field>
+      </div>
+
+      {/* ── Salience ── */}
+      <div>
+        <div style={{ color: '#444', fontSize: '12px', fontWeight: 700, marginBottom: '10px' }}>Salience 分值</div>
+        <Field label="基础分 (base)">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <input
+              type="range" min={0} max={20} value={base}
+              onChange={(e) => setBase(Number(e.target.value))}
+              style={{ flex: 1, accentColor: '#000080' }}
+            />
+            <span style={{ color: '#000080', fontWeight: 700, fontSize: '18px', minWidth: '30px' }}>
+              {base}
+            </span>
+          </div>
+        </Field>
+
+        <div style={{ marginTop: '10px' }}>
+          <div style={{
+            color: '#444', fontSize: '11px', marginBottom: '10px', fontWeight: 600,
+            display: 'flex', justifyContent: 'space-between',
+          }}>
+            <span>修正器 (modifiers)</span>
+            <span style={{ color: '#808080' }}>key ≥ threshold → +bonus / -penalty</span>
+          </div>
+
+          {mods.length === 0 && <div style={emptyHint}>无修正器（使用固定基础分）</div>}
+
+          {mods.map((m, i) => (
+            <div key={i} style={{
+              display: 'grid', gridTemplateColumns: '1fr 70px 60px 60px 24px',
+              gap: '6px', marginBottom: '8px', alignItems: 'center',
+            }}>
+              <KeyInput
+                value={m.key} onChange={(key) => updateMod(i, { key })}
+                filter="quality"
+                style={{ fontSize: '11px' }}
+                placeholder="quality key"
+              />
+              <input
+                type="number" value={m.threshold}
+                onChange={(e) => updateMod(i, { threshold: Number(e.target.value) })}
+                style={{ ...inputStyle, fontSize: '11px' }} placeholder="≥"
+              />
+              <input
+                type="number" value={m.bonus}
+                onChange={(e) => updateMod(i, { bonus: Number(e.target.value) })}
+                style={{ ...inputStyle, fontSize: '11px', color: '#008000' }} placeholder="+bonus"
+              />
+              <input
+                type="number" value={m.penalty}
+                onChange={(e) => updateMod(i, { penalty: Number(e.target.value) })}
+                style={{ ...inputStyle, fontSize: '11px', color: '#FF0000' }} placeholder="-penalty"
+              />
+              <button onClick={() => removeMod(i)} style={removeBtnStyle}>×</button>
+            </div>
+          ))}
+          <button onClick={addMod} style={addBtnStyle}>+ 修正器</button>
+        </div>
+      </div>
     </div>
   )
 }

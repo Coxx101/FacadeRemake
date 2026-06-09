@@ -68,7 +68,7 @@ class NarrativeOrchestrator:
 
         三路决策（按优先级，仅当 WorldState 确实变化时才触发）：
           A. check_progression_by_state() — Landmark 切换 → 首个 Storylet → GameLog
-          B. story_selector.select() — 检测是否有更优 Storylet → 切换 → GameLog
+          B. story_selector.select() — 选出最优 Storylet → 与当前比对 → 不同则切换
           C. 继续当前 Storylet — 不更新 GameLog
         """
         current_landmark = self.landmark_manager.get_current()
@@ -85,10 +85,8 @@ class NarrativeOrchestrator:
 
         # ── 结果B：检查 Storylet 切换 ──
         if current_landmark:
-            new_storylet = self.story_selector.select(
-                world_state, turn, delta_keys,
-                current_storylet_id=self._current_storylet_id
-            )
+            new_storylet = self.story_selector.select(world_state, turn)
+            print(f"[Orchestrator] select() returned: {new_storylet.id if new_storylet else 'None'}, current={self._current_storylet_id}")
             if new_storylet and new_storylet.id != self._current_storylet_id:
                 return self._handle_storylet_switch(
                     new_storylet, current_storylet, turn

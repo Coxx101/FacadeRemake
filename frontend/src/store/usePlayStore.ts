@@ -630,13 +630,29 @@ export const usePlayStore = create<PlayState>()(
           s.backendReady = true
         })
       } else if (data.type === 'location_update') {
-        console.log('[WS] 📍 Location update received')
+        const upd = data as WsLocationUpdate
+        const newLocation = upd.player_location
+        const prevLocation = get().playerLocation
+        console.log(`[WS] 📍 location_update: new="${newLocation}" prev="${prevLocation}" entities=${Object.keys(upd.entity_locations || {}).length}`, upd)
         set((s) => {
-          if ((data as WsLocationUpdate).player_location) {
-            s.playerLocation = (data as WsLocationUpdate).player_location
+          if (newLocation && newLocation !== prevLocation) {
+            console.log(`[WS] 📍 Updating playerLocation: "${prevLocation}" → "${newLocation}"`)
+            s.playerLocation = newLocation
+            const loc = get().locations.find(l => l.id === newLocation)
+            const label = loc?.label || newLocation
+            s.messages.push({
+              id: uid(),
+              role: 'player',
+              speech: `（移动到【${label}】）`,
+              timestamp: Date.now(),
+            })
+          } else if (!newLocation) {
+            console.warn('[WS] ⚠️ location_update: player_location is empty/falsy')
+          } else {
+            console.log(`[WS] 📍 location_update: player_location unchanged (${newLocation} === ${prevLocation})`)
           }
-          if ((data as WsLocationUpdate).entity_locations) {
-            s.entityLocations = { ...(data as WsLocationUpdate).entity_locations }
+          if (upd.entity_locations) {
+            s.entityLocations = { ...upd.entity_locations }
           }
         })
       } else if (data.type === 'location_info') {

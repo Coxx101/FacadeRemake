@@ -10,15 +10,13 @@ const BLANK_STORYLET: Omit<Storylet, 'id'> = {
   conditions: [],
   content: {},
   effects: [],
-  conditional_effects: [],
   repeatability: 'never',
   cooldown: undefined,
   sticky: false,
   priority_override: undefined,
   salience: { base: 5, modifiers: [] },
   on_interrupt: 'pause',
-  completion_trigger: undefined,
-  force_wrap_up: undefined,
+  max_turns: 8,
 }
 
 export default function StoryletPool({ landmark }: { landmark: Landmark }) {

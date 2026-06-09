@@ -1,6 +1,5 @@
 """
 角色 Agent 模块
-基于 IBSEN 论文的演员系统：生成角色内心独白、台词、动作
 
 核心架构：
 - Beat 数据类：导演指令的结构化表示
@@ -65,24 +64,20 @@ class CharacterAgent:
         """设置场景配置（包含元素库）"""
         self._scenario_config = config
 
-    # ─────────────────────────────────────────────────────
-    # 核心方法：生成角色回应（向后兼容版本）
-    # ─────────────────────────────────────────────────────
     def generate_response(self, player_input: str, storylet_content: Dict[str, Any],
                          world_state: Dict[str, Any], conversation_history: List[str] = None,
                          director_instruction: str = "",
                          forbidden_topics: List[str] = None,
-                         allowed_behaviors: List[str] = None,
-                         banter_context: Dict[str, Any] = None,
                          beat_intent: str = "", addressee: str = "") -> Dict[str, str]:
-        """生成角色回应 - 向后兼容版本
+        """生成角色回应（一次 LLM 调用产出 thought + speech + action）
 
         Args:
             player_input: 玩家输入文本（角色自主推进时为空字符串）
             beat_intent: 当前 Beat 的叙事意图
+            addressee: 说话对象（默认 player）
 
         Returns:
-            Dict with keys: "thought", "speech", "action"
+            {"thought": str, "dialogue": str, "actions": str}
         """
         beat = Beat(
             speaker=self.character,
@@ -118,7 +113,7 @@ class CharacterAgent:
         }
 
     # ─────────────────────────────────────────────────────
-    # 新核心方法：基于 Beat 指令生成角色回应
+    # 核心方法：基于 Beat 指令生成角色回应
     # ─────────────────────────────────────────────────────
     def _generate_beat_response(self, beat: Beat, context: BeatContext) -> Dict[str, Any]:
         """基于 Beat 指令生成角色响应
@@ -264,10 +259,19 @@ class CharacterAgent:
             return "【可用表情】\n" + "\n".join(default_expressions)
 
     def _build_location_library_text(self) -> str:
-        """构建地点库文本"""
+        """构建地点库文本（含描述/角色/物品）"""
         if self._scenario_config and self._scenario_config.location_library:
-            locations = [f"- {l.id}: {l.label}" for l in self._scenario_config.location_library]
-            return "【可用地点】\n" + "\n".join(locations)
+            lines = []
+            for l in self._scenario_config.location_library:
+                parts = [f"- {l.id}: {l.label}"]
+                if getattr(l, 'description', ''):
+                    parts.append(f"  ({l.description})")
+                if getattr(l, 'characters', []):
+                    parts.append(f"  [角色: {', '.join(l.characters)}]")
+                if getattr(l, 'props', []):
+                    parts.append(f"  [物品: {', '.join(l.props)}]")
+                lines.append(" ".join(parts))
+            return "【可用地点】\n" + "\n".join(lines)
         else:
             default_locations = [
                 "living_room - 客厅",

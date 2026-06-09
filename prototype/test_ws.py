@@ -36,7 +36,6 @@ async def test_connection():
                                 "director_note": "这是一个测试故事。欢迎来到测试场景。",
                             },
                             "effects": [],
-                            "conditional_effects": [],
                         }
                     ],
                     "characters": [

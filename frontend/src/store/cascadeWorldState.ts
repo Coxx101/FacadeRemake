@@ -13,7 +13,6 @@ import type {
   Condition,
   WorldStateEffect,
   SalienceModifier,
-  CompletionTrigger,
 } from '../types'
 
 // ── 收集所有有效 key ──
@@ -50,15 +49,6 @@ function cleanModifier(m: SalienceModifier, validKeys: Set<string>, renameMap: M
   return m.key === resolved ? m : { ...m, key: resolved }
 }
 
-// ── 清理 CompletionTrigger ──
-
-function cleanTrigger(t: CompletionTrigger, validKeys: Set<string>, renameMap: Map<string, string>): CompletionTrigger | null {
-  if (!t.key) return t  // turn_count 类型没有 key
-  const resolved = renameMap.get(t.key) ?? t.key
-  if (!validKeys.has(resolved)) return null
-  return t.key === resolved ? t : { ...t, key: resolved }
-}
-
 // ── 清理 Condition 数组 ──
 
 function cleanConditions(conds: Condition[], validKeys: Set<string>, renameMap: Map<string, string>): Condition[] {
@@ -90,29 +80,12 @@ function cleanStorylet(st: Storylet, validKeys: Set<string>, renameMap: Map<stri
     ...st,
     conditions: cleanConditions(st.conditions, validKeys, renameMap),
     effects: cleanEffects(st.effects, validKeys, renameMap),
-    conditional_effects: st.conditional_effects
-      .map((ce) => {
-        const cond = cleanCondition(ce.condition, validKeys, renameMap)
-        const effs = cleanEffects(ce.effects, validKeys, renameMap)
-        if (!cond && effs.length === 0) return null
-        return {
-          condition: cond ?? { type: 'flag_check', key: '__always_true__', op: '==', value: true },
-          effects: effs,
-        }
-      })
-      .filter((ce): ce is NonNullable<typeof ce> => ce !== null),
     salience: {
       ...st.salience,
       modifiers: st.salience.modifiers
         .map((m) => cleanModifier(m, validKeys, renameMap))
         .filter((m): m is SalienceModifier => m !== null),
     },
-    completion_trigger: st.completion_trigger
-      ? cleanTrigger(st.completion_trigger, validKeys, renameMap) ?? undefined
-      : undefined,
-    force_wrap_up: st.force_wrap_up
-      ? cleanTrigger(st.force_wrap_up, validKeys, renameMap) ?? undefined
-      : undefined,
   }
 }
 

@@ -5,9 +5,11 @@ GameEngine - v2.0 核心游戏逻辑
 变更：
   - 新增 NarrativeOrchestrator + GameLogWriter
   - 重构 handle_player_input(): 三层门控 + 按需 BeatPlan 刷新
-  - 废弃 _check_and_handle_transitions / _should_switch_storylet / _switch_to_storylet
+
+
   - 对话历史迁移到 StateManager
-  - conversation_history → state_manager.get_conversation_history()
+
+
 """
 import asyncio
 from typing import List, Dict, Any, Optional
@@ -16,10 +18,8 @@ from facade_remake.core.di_container import DIContainer
 from facade_remake.core.narrative_orchestrator import NarrativeOrchestrator, NarrativeEventType
 from facade_remake.core.game_log_writer import GameLogWriter
 from facade_remake.engine.output import (
-    game_banner, character_speaking_hint, character_line, waiting_for_player,
-    narrator_text, state_change, system_message, debug_message, reading_delay_info,
-    nudge_message, storylet_entered, storylet_ended, landmark_entered, ending,
-    show_status, player_silence, input_rejected
+    narrator_text, waiting_for_player, player_silence,
+    character_line, state_change, storylet_entered,
 )
 
 URGENCY_DELAY = {"high": 1.0, "medium": 2.0, "low": 3.0}
@@ -79,7 +79,8 @@ class GameEngine:
         self.state_manager.add_change_listener(self._on_state_change)
 
         self.current_turn = 0
-        self.conversation_history: List[str] = []  # 保留兼容，新代码走 state_manager
+
+
         self.current_storylet = None
         self.storylet_turn_count = 0
         self.storylet_start_turn = 0
@@ -282,23 +283,23 @@ class GameEngine:
             conversation_history=self.state_manager.get_conversation_history()
         )
 
-        # Gate1 阻断：非法输入
+        # ── 第二步：更新回合计数（在所有 pipeline emit 之前）──
+        # Gate1 非法时不计回合，合法时回合+1
         if not analysis.valid and analysis.severity == "hard":
             self._emit_pipeline("gate1", "block", analysis.reason or "输入不可接受")
-            input_rejected(analysis.reason or "输入不可接受")
+            if self.debug_mode:
+                print(f"  [系统] 你的输入不被接受：{analysis.reason or '输入不可接受'}")
             self._player_turn_active = True
             return
-        self._emit_pipeline("gate1", "pass", "输入合法")
 
-        # ── 第二步：更新回合计数 ──
         self.current_turn += 1
         self.storylet_turn_count += 1
+        self._emit_pipeline("gate1", "pass", "输入合法")
         self.director.advance_turn()
 
         # ── 第三步：追加对话历史（不触发叙事）──
         if player_input and player_input.strip():
             self.state_manager.append_conversation_history(f"玩家: {player_input}")
-            self.conversation_history.append(f"玩家: {player_input}")
 
         # 跟踪本轮是否触发了叙事切换
         narrative_result = None
@@ -334,7 +335,7 @@ class GameEngine:
                         self._emit_pipeline("narration", "storylet_switch" if result.type == NarrativeEventType.STORYLET_SWITCH else "landmark_switch",
                             f"叙事切换: {result.type.value}")
 
-        # ── 第六步：闲聊兜底 → 检查超时 ──
+        # ── 第六步：检查超时 ──
         if self.current_storylet:
             if self.storylet_manager.check_timeout(
                 self.current_storylet, self.storylet_turn_count
@@ -349,6 +350,15 @@ class GameEngine:
                     narrative_result = result
                     self._emit_pipeline("narration", "storylet_switch" if result.type == NarrativeEventType.STORYLET_SWITCH else "landmark_switch",
                         f"叙事切换: {result.type.value}")
+
+        # ── 同步：若叙事流转已切换 Storylet，更新 engine 状态 ──
+        if narrative_result and narrative_result.new_storylet_id:
+            new_st = self.storylet_manager.get(narrative_result.new_storylet_id)
+            if new_st:
+                self.current_storylet = new_st
+                self.storylet_turn_count = 0
+                self._emit_pipeline("sync", "storylet_updated",
+                    f"Engine 同步到新 Storylet: {new_st.id} ({new_st.title})")
 
         # ── 第七步：推送 GameLog ──
         self._emit_game_log()
@@ -371,7 +381,6 @@ class GameEngine:
             self.beat_index = 0
             self.schedule_async(self._refresh_beat_plan())
 
-        self._player_turn_active = True
 
     def handle_player_silence(self):
         """处理玩家沉默（v2.0 简化版）"""
@@ -386,7 +395,6 @@ class GameEngine:
         
         silence_line = "玩家: 保持沉默"
         self.state_manager.append_conversation_history(silence_line)
-        self.conversation_history.append(silence_line)
         player_silence()
 
         # 检查超时兜底
@@ -511,7 +519,6 @@ class GameEngine:
         history_line = self._format_history_line(character, dialogue, actions)
         if history_line:
             self.state_manager.append_conversation_history(history_line)
-            self.conversation_history.append(history_line)
 
         return len(dialogue) + len(actions)
 
@@ -591,6 +598,8 @@ class GameEngine:
             self.current_storylet = storylet
             self.storylet_turn_count = 0
             self.storylet_start_turn = self.current_turn
+            # v2.0: 同步 NarrativeOrchestrator
+            self.narrative_orchestrator._current_storylet_id = storylet.id
             if storylet.narrative_goal:
                 self.director.set_current_goal(storylet.narrative_goal)
             self.effect_trends = storylet.get_effect_trends()
@@ -613,23 +622,49 @@ class GameEngine:
         success, message = self.location_manager.move_player(location_id)
 
         if success and old_loc_obj and new_loc_obj:
+            # ── 第一步：记录对话历史（和 handle_player_input 一致）──
             move_record = f"玩家: （移动）从 {old_loc_obj.label} 移动到了 {new_loc_obj.label}"
             self.state_manager.append_conversation_history(move_record)
-            self.conversation_history.append(move_record)
+
+            # ── 第二步：推进回合 ──
             self.current_turn += 1
             self.storylet_turn_count += 1
             self.director.advance_turn()
-            
+
+            # ── 第三步：通过 WorldState 变化触发叙事流转 ──
+            narrative_result = self.state_manager.apply_effects_batch(
+                effects=[
+                    {"key": "player_location", "op": "=", "value": new_loc_obj.id},
+                    {"key": "moved_this_turn", "op": "=", "value": True},
+                ],
+                is_narrative_trigger=True,
+                hint=f"玩家移动到 {new_loc_obj.label}",
+                turn=self.current_turn
+            )
+
+            # ── 第四步：超时兜底 ──
             if self.current_storylet:
                 if self.storylet_manager.check_timeout(
                     self.current_storylet, self.storylet_turn_count
                 ):
-                    self.storylet_manager.force_complete(
+                    result = self.storylet_manager.force_complete(
                         self.current_storylet, self.state_manager,
                         turn=self.current_turn
                     )
+                    if result and not narrative_result:
+                        narrative_result = result
 
+            # ── 第五步：GameLog + BeatPlan ──
             self._emit_game_log()
+
+            narrative_switched = (
+                narrative_result is not None
+                and narrative_result.type in (NarrativeEventType.LANDMARK_SWITCH, NarrativeEventType.STORYLET_SWITCH)
+            )
+            if narrative_switched or self.beat_index >= len(self.current_beat_plan):
+                self.current_beat_plan = []
+                self.beat_index = 0
+                self.schedule_async(self._refresh_beat_plan())
 
         location_summary = self.location_manager.get_location_summary()
         return success, message, location_summary
@@ -639,27 +674,8 @@ class GameEngine:
             return {"locations": [], "player_location": "", "entity_locations": {}}
         return self.location_manager.get_location_summary()
 
-    # ── 废弃方法（v1.0 兼容存根）─────────────────────────────────────
 
-    def _check_and_handle_transitions(self, player_input: str) -> bool:
-        """已废弃，v2.0 由 NarrativeOrchestrator 接管"""
-        return False
 
-    def _should_switch_storylet(self, player_input: str) -> bool:
-        """已废弃，v2.0 由 StoryletManager.check_timeout 接管"""
-        return False
-
-    def _switch_to_storylet(self, new_storylet, is_landmark_switch=False, old_storylet=None):
-        """已废弃，v2.0 由 NarrativeOrchestrator._handle_storylet_switch 接管"""
-        pass
-
-    def _apply_storylet_effects(self):
-        """已废弃，v2.0 由 StoryletManager.force_complete 接管"""
-        pass
-
-    def _check_player_mediation(self, player_input: str):
-        """保留兼容"""
-        pass
 
     def _show_status(self):
         pass

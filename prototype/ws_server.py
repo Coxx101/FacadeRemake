@@ -158,6 +158,11 @@ class GameSession:
                 "entries": entries
             })
 
+        # ── v2.0 新增: 流水线调试事件 ──
+        @self.event_loop.on("pipeline_event")
+        def _on_pipeline_event(event: dict):
+            self.send_message({**event, "type": "pipeline_event"})
+
         print("[EventLoop] GameEventLoop 初始化成功")
         return True
 
@@ -182,6 +187,7 @@ class GameSession:
 
             self.engine.container.init_from_scene_data(scene_data)
             self.engine.world_state = self.engine.container.world_state
+            self.engine.state_manager = self.engine.container.state_manager
             self.engine.director = self.engine.container.director
             self.engine.update_characters_from_container()
 
@@ -301,22 +307,23 @@ class GameSession:
 
         try:
             success, message, location_summary = self.engine.handle_move_location(location_id)
+            print(f"[MoveLocation] success={success} msg={message} player_location={location_summary.get('player_location', 'N/A')}")
 
-            self.ws.send_json({
+            # 使用 send_message（内部通过 call_soon_threadsafe 调度）
+            self.send_message({
                 "type": "location_update",
                 "player_location": location_summary.get("player_location", ""),
                 "entity_locations": location_summary.get("entity_locations", {}),
             })
+            print(f"[MoveLocation] ✅ location_update 已发送 → {location_summary.get('player_location', 'N/A')}")
 
             if success:
-                self.ws.send_json({
+                self.send_message({
                     "type": "chat", "role": "narrator", "speech": message,
                 })
-                self.ws.send_json({
-                    "type": "beat_plan_refresh",
-                    "reason": "player_moved",
-                    "message": message,
-                })
+                # BeatPlan 刷新由 game_engine.handle_move_location 内部处理，
+                # 不再从 ws_server 重复发送
+                print(f"[MoveLocation] ✅ chat 已发送")
 
         except Exception as e:
             print(f"[MoveLocation] 处理失败: {e}")

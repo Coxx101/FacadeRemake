@@ -8,7 +8,7 @@ from typing import Optional, Callable, Dict, List, Any
 
 from engine.game_engine import GameEngine, PLAYER_TURN_TIMEOUT, calc_reading_delay
 from engine.output import (
-    game_banner, waiting_for_player, reading_delay_info, nudge_message,
+    init_labels, game_banner, waiting_for_player, reading_delay_info, nudge_message,
     game_over, game_interrupted, player_input_prompt,
     narrator_text, character_speaking_hint
 )
@@ -64,8 +64,12 @@ class GameEventLoop:
 
         self.engine._loop = self._loop
 
+        # 从 scenario_config 初始化 output.py 标签映射
+        config = getattr(self.engine.container, '_scenario_config', None)
+        init_labels(config)
+
         self.engine.logger.info("FacadeRemake 原型启动", module="game")
-        game_banner()
+        game_banner(config)
 
         self.engine._trigger_initial_storylet()
 
@@ -129,8 +133,8 @@ class GameEventLoop:
                     self.engine.beat_index += 1
                     self.engine._player_turn_active = True
                     waiting_for_player()
-                    # 触发等待玩家事件
                     self.emit("waiting_for_player")
+                    self.emit("narrator_text", "（等待你说话……）")
                     try:
                         await asyncio.wait_for(
                             self._wait_for_player_during_turn(),
@@ -142,16 +146,19 @@ class GameEventLoop:
                         nudge_speaker = self.engine._pick_nudge_speaker()
                         display_name = {"trip": "Trip", "grace": "Grace"}.get(nudge_speaker, nudge_speaker)
                         nudge_message(display_name)
-                        self.engine.conversation_history.append(f"{nudge_speaker}: 你怎么不说话了？")
+                        # 记录对话历史 + 前端 ChatLog 提示
+                        nudge_text = f"（{display_name} 似乎等得不耐烦了...）"
+                        self.engine.state_manager.append_conversation_history(nudge_text)
+                        self.emit("narrator_text", nudge_text)
                         try:
                             await asyncio.wait_for(
                                 self._wait_for_player_during_turn(),
                                 timeout=30.0
                             )
                         except asyncio.TimeoutError:
-                            if self.engine.debug_mode:
-                                self.engine.logger.debug("玩家长时间未输入，视为保持沉默", module="narrative")
+                            self.engine.logger.debug("玩家长时间未输入，视为保持沉默", module="narrative")
                             if self.engine._player_turn_active:
+                                self.emit("narrator_text", "（你选择了沉默……）")
                                 await self.event_queue.put({"type": "player_silence"})
                         except asyncio.CancelledError:
                             pass

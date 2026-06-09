@@ -8,10 +8,35 @@ from dataclasses import dataclass, field
 
 @dataclass
 class WorldState:
-    """世界状态容器"""
+    """世界状态容器 — v2.0 统一管理数值/标记/关系/实体位置"""
     qualities: Dict[str, float] = field(default_factory=dict)
     flags: Dict[str, Any] = field(default_factory=dict)
     relationships: Dict[str, float] = field(default_factory=dict)
+    # v2.0: 实体位置映射 { entity_id: location_id }
+    # entity_id 可以是角色 ID（"trip", "grace"）、物品 ID（"wine_glass"）、或特殊键 "player"
+    entity_positions: Dict[str, str] = field(default_factory=dict)
+
+    # ── 位置管理（v2.0）──────────────────────────────────────────────
+
+    def get_entity_position(self, entity_id: str) -> str:
+        """获取实体当前位置，无记录返回空字符串"""
+        return self.entity_positions.get(entity_id, "")
+
+    def set_entity_position(self, entity_id: str, location_id: str):
+        """设置实体位置"""
+        self.entity_positions[entity_id] = location_id
+
+    def get_entities_at(self, location_id: str) -> list[str]:
+        """获取某位置的所有实体 ID 列表"""
+        return [eid for eid, lid in self.entity_positions.items() if lid == location_id]
+
+    def get_player_location(self) -> str:
+        """快捷：获取玩家位置"""
+        return self.get_entity_position("player")
+
+    def set_player_location(self, location_id: str):
+        """快捷：设置玩家位置"""
+        self.set_entity_position("player", location_id)
     
     def get_quality(self, key: str, default: float = 0.0) -> float:
         """获取数值型变量"""
@@ -63,6 +88,9 @@ class WorldState:
             else:
                 # 字符串值存为 flag
                 self.set_flag(key, value)
+        elif op == "move":
+            # v2.0: 移动实体 { "key": "trip", "op": "move", "value": "kitchen" }
+            self.set_entity_position(key, str(value))
         elif op == "+":
             current = self.get_quality(key, 0.0)
             self.set_quality(key, current + float(value))
@@ -77,7 +105,7 @@ class WorldState:
             self.set_quality(key, min(current, float(value)))
     
     def check_condition(self, condition: Dict[str, Any]) -> bool:
-        """检查一个条件是否满足"""
+        """检查一个条件是否满足（None flag/quality 视为 False/0）"""
         cond_type = condition.get("type")
         key = condition.get("key")
         op = condition.get("op")
@@ -89,6 +117,12 @@ class WorldState:
         elif cond_type == "flag_check":
             current = self.get_flag(key)
             target = value
+            # 未初始化的 flag 对于布尔比较视为 False
+            if current is None and isinstance(target, bool):
+                current = False
+            # 诊断打印
+            if key == "arrived":
+                print(f"  [check_cond] arrived: current={current!r} target={target!r} flags={dict(self.flags)!r}")
         elif cond_type == "relationship_check":
             current = self.get_relationship(key)
             target = float(value)
@@ -115,7 +149,8 @@ class WorldState:
         return {
             "qualities": self.qualities.copy(),
             "flags": self.flags.copy(),
-            "relationships": self.relationships.copy()
+            "relationships": self.relationships.copy(),
+            "entity_positions": self.entity_positions.copy(),
         }
     
     @classmethod
@@ -124,33 +159,19 @@ class WorldState:
         return cls(
             qualities=data.get("qualities", {}),
             flags=data.get("flags", {}),
-            relationships=data.get("relationships", {})
+            relationships=data.get("relationships", {}),
+            entity_positions=data.get("entity_positions", {}),
         )
 
     def get_display_values(self) -> List[Dict[str, Any]]:
         """返回格式化的状态值列表，供前端展示。
 
-        返回格式：[
-            {"key": "tension", "value": 5.0, "max": 10, "label": "张力", "icon": "⚡"},
-            ...
-        ]
+        返回格式：[{"key": "tension", "value": 5.0, "max": 10, "label": "tension"}, ...]
+        label 由外部 WSD 提供，此处仅返回原始 key。
         """
-        display_map = {
-            "tension": {"label": "张力", "icon": "⚡", "max": 10},
-            "grace_comfort": {"label": "Grace 舒适度", "icon": "💔", "max": 10},
-            "trip_comfort": {"label": "Trip 舒适度", "icon": "💔", "max": 10},
-            "marriage_tension": {"label": "婚姻张力", "icon": "⚡", "max": 10},
-        }
         result = []
         for key, current_val in self.qualities.items():
-            meta = display_map.get(key, {"label": key, "icon": "📊", "max": 10})
-            result.append({
-                "key": key,
-                "value": current_val,
-                "max": meta["max"],
-                "label": meta["label"],
-                "icon": meta["icon"],
-            })
+            result.append({"key": key, "value": current_val, "max": 10, "label": key})
         return result
 
     def compute_beat_delta(self,
@@ -164,14 +185,12 @@ class WorldState:
             effect_trends: Storylet.get_effect_trends() 返回的趋势信息
             accumulated_delta: 本 Storylet 已累计的状态变化
             player_input: 玩家当前输入（空=没说话）
-            defusing_keywords: 缓解气氛的关键词列表（可选）
+            defusing_keywords: 缓解气氛的关键词列表（由调用方从配置传入）
 
         Returns:
             实际 delta 字典，如 {"tension": 1, "grace_comfort": -1}
         """
-        if not defusing_keywords:
-            defusing_keywords = ["冷静", "别吵", "算了", "没事", "缓一缓", "消消气",
-                                  "不好意思", "抱歉", "对不起", "好吧", "行了"]
+        defusing_keywords = defusing_keywords or []
         
         delta = {}
         player_is_defusing = any(kw in player_input for kw in defusing_keywords) if player_input else False

@@ -52,18 +52,6 @@ export interface Salience {
   modifiers: SalienceModifier[]
 }
 
-export interface ConditionalEffect {
-  condition: Condition
-  effects: WorldStateEffect[]
-}
-
-export interface CompletionTrigger {
-  type: 'turn_count' | 'flag_check' | 'quality_check'
-  value?: number | string | boolean
-  key?: string
-  op?: string
-}
-
 export interface Storylet {
   id: string
   title: string
@@ -75,7 +63,6 @@ export interface Storylet {
   content: Record<string, unknown>
   // 后置效果
   effects: WorldStateEffect[]
-  conditional_effects: ConditionalEffect[]
   // 调度
   repeatability: 'never' | 'unlimited' | 'cooldown'
   cooldown?: number
@@ -85,9 +72,8 @@ export interface Storylet {
   salience: Salience
   // 演出
   on_interrupt: 'pause' | 'abort' | 'continue'
-  // 结束触发
-  completion_trigger?: CompletionTrigger
-  force_wrap_up?: CompletionTrigger
+  // v2.0: 最大回合数（闲聊兜底）
+  max_turns: number
 }
 
 // ─── 角色设定 ──────────────────────────────────────────────────────────────────
@@ -109,6 +95,7 @@ export interface CharacterProfile {
   secret_knowledge: string[]  // 秘密知识条目
   ng_words: string[]    // 禁用词
   monologues: MonologueTemplate[]  // 内心独白模板
+  portrait_url?: string // base64 立绘图片
 }
 
 export interface SharedContext {
@@ -182,7 +169,11 @@ export interface PropEntry {
 export interface LocationEntry {
   id: string
   label: string
-  adjacent?: string[]
+  adjacent: string[]           // 可达的相邻地点 ID 列表
+  description?: string         // 场景氛围描述（叙事用）
+  characters?: string[]        // 该地点可互动的角色 ID 列表
+  props?: string[]             // 该地点的物品 ID 列表
+  background_url?: string      // base64 场景背景图
 }
 
 // ─── 应用状态类型 ─────────────────────────────────────────────────────────────

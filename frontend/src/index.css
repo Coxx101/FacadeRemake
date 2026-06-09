@@ -50,8 +50,6 @@
   --titlebar-start: #000080;
   --titlebar-end:   #1084D0;
   --panel-yellow:   #FFFFCC;
-
-  /* 深色主题兼容变量（Design 模式） */
   --bg-primary: #C0C0C0;
   --bg-secondary: #C0C0C0;
   --bg-card:      #C0C0C0;
@@ -270,6 +268,11 @@ button:focus-visible {
 @keyframes speakingPulse {
   0%, 100% { transform: scale(1); opacity: 0.8; }
   50%       { transform: scale(1.5); opacity: 1; }
+}
+
+@keyframes namePulse {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(2.2); }
 }
 
 @keyframes fadeIn {

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Users, ChevronLeft, Pin } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import type { CharacterProfile, MonologueTemplate } from '../../types'
+import ImageUpload from '../shared/ImageUpload'
 import {
   inputStyle, selectStyle, addBtnStyle, removeBtnStyle,
 } from '../inspector/Inspector'
@@ -203,6 +204,22 @@ function CharacterEditor({ character }: { character: CharacterProfile }) {
         flex: 1, minHeight: 0,
         overflowY: 'auto', padding: '12px 16px',
       }}>
+        {/* 立绘上传 */}
+        <div style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <ImageUpload
+            value={form.portrait_url}
+            onChange={(url) => {
+              set('portrait_url', url)
+              updateCharacter(character.id, { ...form, portrait_url: url })
+            }}
+            width={120} height={160}
+            placeholder="上传立绘"
+          />
+          <div style={{ fontSize: 10, color: '#808080' }}>
+            <div>PNG 透明底</div>
+            <div>建议 400×550</div>
+          </div>
+        </div>
 
         {/* 身份描述 */}
         <CollapsibleSection title="角色身份" subtitle="注入 system prompt" expanded={expandedSections.identity} onToggle={() => toggleSection('identity')}>
@@ -231,7 +248,7 @@ function CharacterEditor({ character }: { character: CharacterProfile }) {
         <CollapsibleSection title={`背景 (${form.background.length})`} expanded={expandedSections.background} onToggle={() => toggleSection('background')}>
           <StringListEditor
             items={form.background}
-            onChange={(items) => { set('background', items); setTimeout(save, 50) }}
+            onChange={(items) => { set('background', items); updateCharacter(character.id, { ...form, background: items }) }}
             placeholder="输入背景信息..."
           />
         </CollapsibleSection>
@@ -240,7 +257,7 @@ function CharacterEditor({ character }: { character: CharacterProfile }) {
         <CollapsibleSection title={`秘密知识 (${form.secret_knowledge.length})`} expanded={expandedSections.secrets} onToggle={() => toggleSection('secrets')}>
           <StringListEditor
             items={form.secret_knowledge}
-            onChange={(items) => { set('secret_knowledge', items); setTimeout(save, 50) }}
+            onChange={(items) => { set('secret_knowledge', items); updateCharacter(character.id, { ...form, secret_knowledge: items }) }}
             placeholder="如：只有系统知道：xxx / 他自己知道：xxx / 他不知道：xxx"
           />
         </CollapsibleSection>
@@ -249,7 +266,7 @@ function CharacterEditor({ character }: { character: CharacterProfile }) {
         <CollapsibleSection title={`内心独白 (${form.monologues.length})`} expanded={expandedSections.monologues} onToggle={() => toggleSection('monologues')}>
           <MonologueListEditor
             monologues={form.monologues}
-            onChange={(monologues) => { set('monologues', monologues); setTimeout(save, 50) }}
+            onChange={(monologues) => { set('monologues', monologues); updateCharacter(character.id, { ...form, monologues }) }}
           />
         </CollapsibleSection>
 
@@ -288,36 +305,34 @@ function MonologueListEditor({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
       {monologues.map((m, i) => {
         const isExpanded = expanded[m.id] ?? false
         return (
-          <div key={m.id} style={{
-            border: '1px solid #2e3250', borderRadius: '6px', overflow: 'hidden',
-          }}>
-            {/* 独白头部（可折叠） */}
+          <div key={m.id} className="bevel-out" style={{ overflow: 'hidden' }}>
+            {/* 独白头部 */}
             <div
               onClick={() => setExpanded((s) => ({ ...s, [m.id]: !isExpanded }))}
               style={{
-                padding: '8px 10px', cursor: 'pointer',
-                background: isExpanded ? '#1e2a4a' : '#131828',
+                padding: '5px 8px', cursor: 'pointer',
+                background: isExpanded ? '#d0d0ff' : '#C0C0C0',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
-                <span style={{ color: '#8891b0', fontSize: '11px' }}>
+                <span style={{ color: '#000', fontSize: '11px', fontFamily: '"MS Sans Serif",sans-serif' }}>
                   {isExpanded ? '▼' : '▶'}
                 </span>
                 {m.category && (
-                  <span style={{
-                    fontSize: '10px', color: '#f5a623', background: '#2a2518',
-                    padding: '1px 6px', borderRadius: '3px', flexShrink: 0,
+                  <span className="bevel-out" style={{
+                    fontSize: '10px', color: '#000080', background: '#E0E8FF',
+                    padding: '1px 5px', flexShrink: 0,
                   }}>
                     {m.category}
                   </span>
                 )}
                 <span style={{
-                  color: '#8891b0', fontSize: '11px',
+                  color: '#000', fontSize: '11px', fontFamily: '"MS Sans Serif",sans-serif',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {m.monologue.slice(0, 40) || '(空独白)'}
@@ -332,10 +347,13 @@ function MonologueListEditor({
 
             {/* 展开的编辑表单 */}
             {isExpanded && (
-              <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid #2e3250' }}>
+              <div style={{
+                padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '6px',
+                borderTop: '2px solid #808080', background: '#D0D0CC',
+              }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ color: '#4a5070', fontSize: '10px', marginBottom: '3px' }}>类别</div>
+                    <div style={fieldLabelStyle}>类别</div>
                     <input
                       value={m.category}
                       onChange={(e) => update(i, { category: e.target.value })}
@@ -344,7 +362,7 @@ function MonologueListEditor({
                     />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ color: '#4a5070', fontSize: '10px', marginBottom: '3px' }}>情绪标签</div>
+                    <div style={fieldLabelStyle}>情绪标签</div>
                     <TagInput
                       tags={m.emotion_tags}
                       onChange={(tags) => update(i, { emotion_tags: tags })}
@@ -352,7 +370,7 @@ function MonologueListEditor({
                   </div>
                 </div>
                 <div>
-                  <div style={{ color: '#4a5070', fontSize: '10px', marginBottom: '3px' }}>关联秘密</div>
+                  <div style={fieldLabelStyle}>关联秘密</div>
                   <input
                     value={m.ref_secret}
                     onChange={(e) => update(i, { ref_secret: e.target.value })}
@@ -361,7 +379,7 @@ function MonologueListEditor({
                   />
                 </div>
                 <div>
-                  <div style={{ color: '#4a5070', fontSize: '10px', marginBottom: '3px' }}>内心独白</div>
+                  <div style={fieldLabelStyle}>内心独白</div>
                   <textarea
                     value={m.monologue}
                     onChange={(e) => update(i, { monologue: e.target.value })}
@@ -378,6 +396,12 @@ function MonologueListEditor({
       <button onClick={add} style={addBtnStyle}>+ 添加独白</button>
     </div>
   )
+}
+
+// ── 字段标签样式 ──
+const fieldLabelStyle: React.CSSProperties = {
+  color: '#000', fontSize: '11px', fontWeight: 600, marginBottom: '3px',
+  fontFamily: '"MS Sans Serif", sans-serif',
 }
 
 // ── 字符串列表编辑器（用于 background、secret_knowledge） ──────────────────
@@ -439,11 +463,12 @@ function StringListEditor({
           ) : (
             <span
               onDoubleClick={() => startEdit(i)}
+              className="bevel-in"
               style={{
-                flex: 1, fontSize: '11px', color: '#c0c8e0',
-                background: '#131828', padding: '5px 8px', borderRadius: '4px',
-                border: '1px solid #2e3250', wordBreak: 'break-all',
-                cursor: 'text',
+                flex: 1, fontSize: '11px', color: '#000',
+                background: '#fff', padding: '4px 8px',
+                wordBreak: 'break-all', cursor: 'text',
+                fontFamily: '"MS Sans Serif", sans-serif',
               }}
               title="双击编辑"
             >
@@ -472,7 +497,7 @@ function StringListEditor({
   )
 }
 
-// ── 标签输入（复用 Inspector 的 TagInput 简化版） ────────────────────────────
+// ── 标签输入 ─────────────────────────────────────────────────────────────────
 
 function TagInput({ tags, onChange }: { tags: string[]; onChange: (tags: string[]) => void }) {
   const [input, setInput] = useState('')
@@ -482,17 +507,18 @@ function TagInput({ tags, onChange }: { tags: string[]; onChange: (tags: string[
         {tags.map((tag) => (
           <span
             key={tag}
+            className="bevel-out"
             style={{
-              background: '#1e2a4a', border: '1px solid #2e3a60',
-              borderRadius: '4px', padding: '2px 8px',
-              fontSize: '11px', color: '#7090e0',
+              padding: '2px 6px', fontSize: '11px', color: '#000080',
+              background: '#D0E8FF',
               display: 'flex', alignItems: 'center', gap: '4px',
+              fontFamily: '"MS Sans Serif", sans-serif',
             }}
           >
             {tag}
             <button
               onClick={() => onChange(tags.filter((t) => t !== tag))}
-              style={{ background: 'none', border: 'none', color: '#4a5070', cursor: 'pointer', fontSize: '12px', lineHeight: 1 }}
+              style={{ background: 'none', border: 'none', color: '#808080', cursor: 'pointer', fontSize: '12px', lineHeight: 1, padding: 0 }}
             >×</button>
           </span>
         ))}

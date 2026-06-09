@@ -139,7 +139,7 @@ class InputParser:
 只返回 JSON。"""
 
         try:
-            response = self.llm_client.call_llm(prompt, max_tokens=50, temperature=0.0, debug_tag='InputParser/Gate1')
+            response = self.llm_client.call_llm(prompt, max_tokens=50, temperature=0.0)
             cleaned = response.strip()
             if cleaned.startswith("```"):
                 lines = cleaned.split("\n")
@@ -240,7 +240,7 @@ class InputParser:
 只回答 YES 或 NO："""
 
         try:
-            response = self.llm_client.call_llm(prompt, max_tokens=5, temperature=0.0, debug_tag='InputParser/Gate2/Goal')
+            response = self.llm_client.call_llm(prompt, max_tokens=5, temperature=0.0)
             resp = response.strip().upper()
             if "YES" not in resp and "NO" not in resp:
                 raise ValueError(f"非预期结果: {resp}")
@@ -293,7 +293,7 @@ class InputParser:
 只返回 JSON。"""
 
         try:
-            response = self.llm_client.call_llm(prompt, max_tokens=80, temperature=0.0, debug_tag='InputParser/Gate2/Match')
+            response = self.llm_client.call_llm(prompt, max_tokens=80, temperature=0.0)
             result = json.loads(response.strip())
             indices = result.get("matched", [])
             matched_ids, all_effects = [], []
