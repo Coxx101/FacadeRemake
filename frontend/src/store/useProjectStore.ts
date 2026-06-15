@@ -1,14 +1,51 @@
 import { create } from 'zustand'
 import type { StoryProjectMeta, Landmark, Storylet, CharacterProfile, SharedContext, WorldStateDefinition, ActionEntry, ExpressionEntry, PropEntry, LocationEntry } from '../types'
+import {
+  defaultLandmarks,
+  defaultStorylets,
+  defaultCharacters,
+  defaultSharedContext,
+  defaultWorldStateDefinition,
+  defaultActionLibrary,
+  defaultExpressionLibrary,
+  defaultPropLibrary,
+  defaultLocationLibrary,
+} from '../data/defaults'
 
 const STORAGE_KEY = 'facadestudio_projects'
+
+function createDefaultProject(): StoryProjectMeta {
+  const now = new Date().toISOString()
+  return {
+    id: 'default_project',
+    name: '晚餐派对',
+    description: '一个关于婚姻与秘密的互动叙事故事。Trip 和 Grace 的婚姻在这个夜晚面临最终考验。',
+    createdAt: now,
+    updatedAt: now,
+    snapshot: {
+      landmarks: JSON.parse(JSON.stringify(defaultLandmarks)),
+      storylets: JSON.parse(JSON.stringify(defaultStorylets)),
+      characters: JSON.parse(JSON.stringify(defaultCharacters)),
+      sharedContext: JSON.parse(JSON.stringify(defaultSharedContext)),
+      worldStateDefinition: JSON.parse(JSON.stringify(defaultWorldStateDefinition)),
+      actionLibrary: JSON.parse(JSON.stringify(defaultActionLibrary)),
+      expressionLibrary: JSON.parse(JSON.stringify(defaultExpressionLibrary)),
+      propLibrary: JSON.parse(JSON.stringify(defaultPropLibrary)),
+      locationLibrary: JSON.parse(JSON.stringify(defaultLocationLibrary)),
+    },
+  }
+}
 
 function loadFromStorage(): StoryProjectMeta[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
+    const stored = raw ? JSON.parse(raw) : []
+    if (stored.length === 0) {
+      return [createDefaultProject()]
+    }
+    return stored
   } catch {
-    return []
+    return [createDefaultProject()]
   }
 }
 
