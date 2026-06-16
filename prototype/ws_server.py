@@ -201,6 +201,9 @@ class GameSession:
 
             if first_landmark:
                 self.engine.landmark_manager.set_current(first_landmark, self.engine.world_state)
+                lm = self.engine.landmark_manager.get_current()
+                if lm and self.engine.game_log_writer:
+                    self.engine.game_log_writer.generate_initial_entry(lm.title or first_landmark, turn=1)
 
             self.scene_loaded = True
 
@@ -209,6 +212,21 @@ class GameSession:
 
             messages.append(self._get_state_snapshot())
             messages.append(self._get_location_snapshot())
+            
+            if self.engine.game_log_writer:
+                log_entries = self.engine.game_log_writer.to_dict_list()
+                print(f"[init_scene] 📋 GameLog entries: {len(log_entries)}")
+                for entry in log_entries:
+                    print(f"  - {entry['title']} ({entry['completion_status']})")
+                messages.append({
+                    "type": "game_log",
+                    "entries": log_entries
+                })
+                
+            print(f"[init_scene] 📤 Total messages to send: {len(messages)}")
+            for msg in messages:
+                print(f"  - {msg.get('type', 'unknown')}")
+                
             return messages
 
         except Exception as e:

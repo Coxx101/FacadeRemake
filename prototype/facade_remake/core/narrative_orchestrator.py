@@ -141,6 +141,7 @@ class NarrativeOrchestrator:
                                  old_storylet,
                                  turn: int) -> NarrativeResult:
         """处理 Storylet 切换"""
+        log_entry = None
         # 1. 强制完成旧 Storylet（应用 effects）
         if old_storylet:
             self.storylet_manager.force_complete(

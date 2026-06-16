@@ -38,6 +38,17 @@ class GameLogWriter:
         self.llm_client = llm_client
         self._log_entries: List[GameLogEntry] = []
 
+    def generate_initial_entry(self, landmark_title: str, turn: int = 1):
+        """生成游戏开始时的初始日志"""
+        entry = GameLogEntry(
+            title="游戏开始",
+            completion_status="landmark_switch",
+            summary=f"进入叙事阶段「{landmark_title}」，故事开始。",
+            turn=turn
+        )
+        self._log_entries.append(entry)
+        return entry
+
     def generate_on_storylet_switch(self,
                                      old_storylet,
                                      turn: int,

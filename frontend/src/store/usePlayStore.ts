@@ -677,9 +677,13 @@ export const usePlayStore = create<PlayState>()(
           s.pipelineEvents.push({ ...pe, ts: Date.now() })
         })
       } else if (data.type === 'game_log') {
-        console.log('[WS] 📋 GameLog received:', (data as WsGameLog).entries?.length, 'entries')
+        const entries = (data as WsGameLog).entries || []
+        console.log('[WS] 📋 GameLog received:', entries.length, 'entries')
+        entries.forEach((entry, i) => {
+          console.log(`  [${i+1}] ${entry.title} (turn ${entry.turn}) - ${entry.completion_status}`)
+        })
         set((s) => {
-          s.gameLogEntries = (data as WsGameLog).entries || []
+          s.gameLogEntries = entries
         })
       } else if (data.type === 'beat_plan_refresh') {
         console.log('[WS] 🔄 Beat plan refresh triggered:', (data as WsBeatPlanRefresh).reason)
