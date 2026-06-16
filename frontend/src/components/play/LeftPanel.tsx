@@ -2,24 +2,49 @@
  * LeftPanel — 90s Retro 左栏（mockup 精确还原）
  * 三层 panel-header + clock-block + location-block + ws-group
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { usePlayStore } from '../../store/usePlayStore'
 import { useStore } from '../../store/useStore'
 import LocationPanel from './LocationPanel'
 
-// ── Clock（Windows 95 面板时钟）──
 function LiveClock() {
-  const [now, setNow] = useState(new Date())
+  const connected = usePlayStore((s) => s.connected)
+  const [gameTime, setGameTime] = useState(new Date())
+  const intervalRef = useRef<number | null>(null)
+
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(t)
-  }, [])
-  const hhmm = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
-  const date = now.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')
-  const weekday = ['SUN','MON','TUE','WED','THU','FRI','SAT'][now.getDay()]
+    if (!connected) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+      setGameTime(new Date())
+      return
+    }
+
+    const startDate = new Date()
+    startDate.setHours(19, 0, 0, 0)
+    setGameTime(startDate)
+
+    intervalRef.current = window.setInterval(() => {
+      setGameTime(prev => new Date(prev.getTime() + 1000))
+    }, 1000)
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [connected])
+
+  const hhmm = gameTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  const date = gameTime.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')
+  const weekday = ['SUN','MON','TUE','WED','THU','FRI','SAT'][gameTime.getDay()]
+
   return (
     <>
-      <div className="panel-header">⌚ SYSTEM CLOCK</div>
+      <div className="panel-header">⌚ GAME TIME</div>
       <div className="bevel-out" style={{ margin: '4px 6px', background: '#C0C0C0', padding: '3px' }}>
         <div className="bevel-in" style={{
           background: '#ffffff', textAlign: 'center',

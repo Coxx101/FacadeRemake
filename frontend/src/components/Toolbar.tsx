@@ -26,7 +26,6 @@ export default function Toolbar() {
   const loadFromJSON = useStore((s: StoreState) => s.loadFromJSON)
   const markClean = useStore((s: StoreState) => s.markClean)
 
-  // 新建 Landmark
   const handleAddLandmark = () => {
     const id = generateId('lm', landmarks.map((l: Landmark) => l.id))
     const nonEnding = landmarks.filter((l: Landmark) => !l.is_ending)
@@ -65,14 +64,12 @@ export default function Toolbar() {
       prop_library: propLibrary,
       location_library: locationLibrary,
     }
-    // 下载 JSON 文件
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url; a.download = 'facade_data.json'; a.click()
     URL.revokeObjectURL(url)
     markClean()
-    // 同步到 localStorage 项目快照
     if (currentProjectId) {
       useProjectStore.getState().saveProjectSnapshot(currentProjectId, {
         landmarks,
@@ -137,7 +134,6 @@ export default function Toolbar() {
     URL.revokeObjectURL(url)
   }
 
-  // ── 右侧面板切换 ──
   const rightPanel = useStore((s: StoreState) => s.rightPanel)
   const setRightPanel = useStore((s: StoreState) => s.setRightPanel)
   const characters = useStore((s: StoreState) => s.characters)
@@ -147,14 +143,12 @@ export default function Toolbar() {
   const propLibrary = useStore((s: StoreState) => s.propLibrary)
   const locationLibrary = useStore((s: StoreState) => s.locationLibrary)
 
-  // ── 撤销 / 重做 ──
   const _undoCount = useStore((s: StoreState) => s._undoCount)
   const _redoCount = useStore((s: StoreState) => s._redoCount)
 
   const handleUndo = useCallback(() => useStore.getState().undo(), [])
   const handleRedo = useCallback(() => useStore.getState().redo(), [])
 
-  // Ctrl+Z / Ctrl+Shift+Z 快捷键
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
@@ -176,162 +170,127 @@ export default function Toolbar() {
   }, [])
 
   return (
-    <header
-      className="title-bar"
-      style={{
-        height: '60px',
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0 6px',
-        gap: '12px',
-        userSelect: 'none',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+    <header className="toolbar-container">
+      <div className="toolbar-section toolbar-logo">
         <button
           onClick={() => setMode('home')}
           title="返回首页"
-          style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            background: 'transparent', border: 'none',
-            cursor: 'pointer', padding: '0',
-            fontFamily: '"MS Sans Serif", "Arial Black", sans-serif',
-            fontSize: '15px', fontWeight: 700,
-          }}
+          className="toolbar-logo-btn"
         >
           <LayoutDashboard size={16} color="#ffffff" strokeWidth={2.2} />
-          <span style={{ color: '#fff', letterSpacing: '0.05em' }}>
+          <span className="toolbar-logo-text">
             Facade<span style={{ color: '#FFFF00' }}>Studio</span>
           </span>
         </button>
       </div>
 
-      <div className="bevel-out" style={{ display: 'flex', overflow: 'hidden', padding: '1px' }}>
-        {(['design', 'play'] as const).map((m) => (
-          <button key={m} onClick={() => setMode(m)} style={{
-            padding: '2px 14px',
-            background: mode === m ? '#000080' : '#C0C0C0',
-            border: 'none',
-            color: mode === m ? '#fff' : '#000',
-            fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: '4px',
-            fontFamily: '"MS Sans Serif", sans-serif',
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.borderStyle = 'inset'
-            e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.borderStyle = 'outset'
-            e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderStyle = 'outset'
-            e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
-          }}
-        >
-            {m === 'design' ? <Wrench size={12} /> : <Gamepad2 size={12} />}
-            {m === 'design' ? 'Design' : 'Play'}
-          </button>
-        ))}
+      <div className="toolbar-section toolbar-mode-switcher">
+        <div className="bevel-out toolbar-mode-group">
+          {(['design', 'play'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`toolbar-mode-btn ${mode === m ? 'toolbar-mode-btn-active' : ''}`}
+              onMouseDown={(e) => {
+                e.currentTarget.style.borderStyle = 'inset'
+                e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.borderStyle = 'outset'
+                e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderStyle = 'outset'
+                e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+              }}
+            >
+              {m === 'design' ? <Wrench size={12} /> : <Gamepad2 size={12} />}
+              <span className="toolbar-mode-text">{m === 'design' ? 'Design' : 'Play'}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {mode === 'design' && (
         <>
-          <div className="bevel-in" style={{ width: '1px', height: '24px', margin: '0 4px' }} />
-          <ToolButton icon={<Plus size={14} />} label="新建 Landmark" onClick={handleAddLandmark} color="#0000FF" />
-          <ToolButton icon={<Trash2 size={14} />} label="删除选中节点" onClick={handleDeleteSelected} color="#FF0000"
-            disabled={!selectedLandmarkId} />
-          <div className="bevel-in" style={{ width: '1px', height: '24px', margin: '0 4px' }} />
-          <ToolButton icon={<Undo2 size={14} />} label="撤销 (Ctrl+Z)" onClick={handleUndo} color="#444444"
-            disabled={_undoCount === 0} />
-          <ToolButton icon={<Redo2 size={14} />} label="重做 (Ctrl+Shift+Z)" onClick={handleRedo} color="#444444"
-            disabled={_redoCount === 0} />
-          <div className="bevel-in" style={{ width: '1px', height: '24px', margin: '0 4px' }} />
-          <div className="bevel-out" style={{ display: 'flex', overflow: 'hidden', padding: '1px' }}>
-            <button onClick={() => setRightPanel('inspector')} style={{
-              padding: '2px 10px',
-              background: rightPanel === 'inspector' ? '#0000FF' : '#C0C0C0',
-              border: 'none',
-              color: rightPanel === 'inspector' ? '#fff' : '#000',
-              fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-              fontFamily: '"MS Sans Serif", sans-serif',
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.borderStyle = 'inset'
-              e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.borderStyle = 'outset'
-              e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
-            }}
-          ><LayoutDashboard size={12} /> 蓝图</button>
-            <button onClick={() => setRightPanel('characters')} style={{
-              padding: '2px 10px',
-              background: rightPanel === 'characters' ? '#FF0000' : '#C0C0C0',
-              border: 'none',
-              color: rightPanel === 'characters' ? '#fff' : '#000',
-              fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-              fontFamily: '"MS Sans Serif", sans-serif',
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.borderStyle = 'inset'
-              e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.borderStyle = 'outset'
-              e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
-            }}
-          ><Users size={12} /> 角色</button>
-            <button onClick={() => setRightPanel('worldstate')} style={{
-              padding: '2px 10px',
-              background: rightPanel === 'worldstate' ? '#FFFF00' : '#C0C0C0',
-              border: 'none',
-              color: rightPanel === 'worldstate' ? '#000' : '#000',
-              fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-              fontFamily: '"MS Sans Serif", sans-serif',
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.borderStyle = 'inset'
-              e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.borderStyle = 'outset'
-              e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
-            }}
-          ><Globe size={12} /> 变量</button>
-            <button onClick={() => setRightPanel('library')} style={{
-              padding: '2px 10px',
-              background: rightPanel === 'library' ? '#00AA00' : '#C0C0C0',
-              border: 'none',
-              color: rightPanel === 'library' ? '#fff' : '#000',
-              fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-              fontFamily: '"MS Sans Serif", sans-serif',
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.borderStyle = 'inset'
-              e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.borderStyle = 'outset'
-              e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
-            }}
-          ><Package size={12} /> 资源库</button>
+          <div className="toolbar-section toolbar-actions">
+            <div className="bevel-in toolbar-divider" />
+            <ToolButton icon={<Plus size={14} />} label="新建 Landmark" onClick={handleAddLandmark} color="#0000FF" />
+            <ToolButton icon={<Trash2 size={14} />} label="删除选中节点" onClick={handleDeleteSelected} color="#FF0000"
+              disabled={!selectedLandmarkId} />
+            <div className="bevel-in toolbar-divider" />
+            <ToolButton icon={<Undo2 size={14} />} label="撤销 (Ctrl+Z)" onClick={handleUndo} color="#444444"
+              disabled={_undoCount === 0} hideText />
+            <ToolButton icon={<Redo2 size={14} />} label="重做 (Ctrl+Shift+Z)" onClick={handleRedo} color="#444444"
+              disabled={_redoCount === 0} hideText />
           </div>
-          <div className="bevel-in" style={{ width: '1px', height: '24px', margin: '0 4px' }} />
-          <ToolButton icon={<FolderOpen size={14} />} label="导入 JSON" onClick={handleLoad} color="#8891b0" />
-          <ToolButton icon={<Save size={14} />} label={isDirty ? '保存 JSON（有修改）' : '保存 JSON'} onClick={handleSave} color={isDirty ? '#2ecc71' : '#8891b0'} />
-          {isDirty && <AlertTriangle size={14} color="#2ecc71" style={{ marginLeft: '-6px' }} title="有未保存的修改" />}
-          <ToolButton icon={<Gamepad2 size={14} />} label="导出 Unity" onClick={handleExportUnity} color="#9b59b6" />
+
+          <div className="toolbar-section toolbar-panel-switcher">
+            <div className="bevel-in toolbar-divider" />
+            <div className="bevel-out toolbar-panel-group">
+              <button onClick={() => setRightPanel('inspector')}
+                className={`toolbar-panel-btn ${rightPanel === 'inspector' ? 'toolbar-panel-btn-active-blue' : ''}`}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.borderStyle = 'inset'
+                  e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.borderStyle = 'outset'
+                  e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+                }}
+              ><LayoutDashboard size={12} /> <span className="toolbar-panel-text">蓝图</span></button>
+              <button onClick={() => setRightPanel('characters')}
+                className={`toolbar-panel-btn ${rightPanel === 'characters' ? 'toolbar-panel-btn-active-red' : ''}`}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.borderStyle = 'inset'
+                  e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.borderStyle = 'outset'
+                  e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+                }}
+              ><Users size={12} /> <span className="toolbar-panel-text">角色</span></button>
+              <button onClick={() => setRightPanel('worldstate')}
+                className={`toolbar-panel-btn ${rightPanel === 'worldstate' ? 'toolbar-panel-btn-active-yellow' : ''}`}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.borderStyle = 'inset'
+                  e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.borderStyle = 'outset'
+                  e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+                }}
+              ><Globe size={12} /> <span className="toolbar-panel-text">变量</span></button>
+              <button onClick={() => setRightPanel('library')}
+                className={`toolbar-panel-btn ${rightPanel === 'library' ? 'toolbar-panel-btn-active-green' : ''}`}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.borderStyle = 'inset'
+                  e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.borderStyle = 'outset'
+                  e.currentTarget.style.borderColor = '#ffffff #808080 #808080 #ffffff'
+                }}
+              ><Package size={12} /> <span className="toolbar-panel-text">资源库</span></button>
+            </div>
+          </div>
+
+          <div className="toolbar-section toolbar-io">
+            <div className="bevel-in toolbar-divider" />
+            <ToolButton icon={<FolderOpen size={14} />} label="导入 JSON" onClick={handleLoad} color="#8891b0" hideText />
+            <ToolButton icon={<Save size={14} />} label={isDirty ? '保存 JSON（有修改）' : '保存 JSON'} onClick={handleSave} color={isDirty ? '#2ecc71' : '#8891b0'} hideText />
+            {isDirty && <AlertTriangle size={14} color="#2ecc71" className="toolbar-dirty-indicator" />}
+            <ToolButton icon={<Gamepad2 size={14} />} label="导出 Unity" onClick={handleExportUnity} color="#9b59b6" hideText />
+          </div>
         </>
       )}
 
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <span style={{ color: '#4a5070', fontSize: '11px' }}>
+      <div className="toolbar-section toolbar-status">
+        <span className="toolbar-status-text">
           {landmarks.length} 节点 · {storylets.length} storylets · {characters.length} 角色 · {wsd.qualities.length + wsd.flags.length + wsd.relationships.length} 变量 · {actionLibrary.length + expressionLibrary.length + propLibrary.length + locationLibrary.length} 资源
         </span>
         {isDirty && (
-          <span style={{ background: 'rgba(46,204,113,0.15)', color: '#2ecc71', fontSize: '10px', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+          <span className="toolbar-dirty-badge">
             未保存
           </span>
         )}
@@ -340,26 +299,14 @@ export default function Toolbar() {
   )
 }
 
-function ToolButton({ icon, label, onClick, color, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; color: string; disabled?: boolean }) {
+function ToolButton({ icon, label, onClick, color, disabled, hideText }: { icon: React.ReactNode; label: string; onClick: () => void; color: string; disabled?: boolean; hideText?: boolean }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       title={label}
-      className={disabled ? 'bevel-out' : 'bevel-out'}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '6px',
-        padding: '3px 10px',
-        background: disabled ? '#C0C0C0' : '#C0C0C0',
-        border: '2px solid',
-        borderColor: disabled ? '#ffffff #808080 #808080 #ffffff' : '#ffffff #808080 #808080 #ffffff',
-        color: disabled ? '#808080' : color,
-        fontSize: '11px', fontWeight: 600,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        fontFamily: '"MS Sans Serif", sans-serif',
-        userSelect: 'none',
-        opacity: disabled ? 0.5 : 1,
-      }}
+      className={`toolbar-tool-btn ${disabled ? 'toolbar-tool-btn-disabled' : ''}`}
+      style={{ color: disabled ? '#808080' : color }}
       onMouseDown={(e) => {
         if (!disabled) {
           e.currentTarget.style.borderColor = '#808080 #ffffff #ffffff #808080'
@@ -380,7 +327,7 @@ function ToolButton({ icon, label, onClick, color, disabled }: { icon: React.Rea
       }}
     >
       {icon}
-      <span>{label}</span>
+      {!hideText && <span className="toolbar-tool-text">{label}</span>}
     </button>
   )
 }

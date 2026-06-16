@@ -12,26 +12,22 @@ import CommandBar from './CommandBar'
 import RightPanel from './RightPanel'
 import { usePlayStore, sendInitScene } from '../../store/usePlayStore'
 
-// ── 连接状态横幅组件 ──────────────────────────────────────────────────────────
 function ConnectionBanner() {
   const connected = usePlayStore((s) => s.connected)
-  const connecting = usePlayStore((s) => s.connecting)
   const currentStorylet = usePlayStore((s) => s.currentStorylet)
   const currentLandmark = usePlayStore((s) => s.currentLandmark)
 
-  const statusText = connected ? 'CONNECTED' : connecting ? 'WAITING...' : 'DISCONNECTED'
-  const dotColor = connected ? '#00AA00' : connecting ? '#b8860b' : '#FF0000'
+  const statusText = connected ? 'CONNECTED' : 'DISCONNECTED'
+  const dotColor = connected ? '#00AA00' : '#FF0000'
 
   return (
     <div className="conn-banner">
       <span className="conn-title">FACADE REMAKE</span>
-      {currentStorylet?.title && (
-        <div className="storylet-chip">Storylet: {currentStorylet.title}</div>
-      )}
       {currentLandmark && (
-        <div className="storylet-chip" style={{ color:'#000080', background:'#d0e8ff' }}>
-          {currentLandmark.title} · {currentLandmark.phase_tag}
-        </div>
+        <span className="conn-project">{currentLandmark.title}</span>
+      )}
+      {currentStorylet?.title && (
+        <span className="conn-storylet">{currentStorylet.title}</span>
       )}
       <div className="conn-status">
         <div className="conn-dot" style={{ background: dotColor }} />
@@ -47,7 +43,6 @@ export default function PlayMode() {
   const isLoading = usePlayStore((s) => s.isLoading)
   const connected = usePlayStore((s) => s.connected)
   const currentStorylet = usePlayStore((s) => s.currentStorylet)
-  const connecting = usePlayStore((s) => s.connecting)
   const backendReady = usePlayStore((s) => s.backendReady)
   const sentInitScene = usePlayStore((s) => s.sentInitScene)
   const setSentInitScene = usePlayStore((s) => s.setSentInitScene)
@@ -76,6 +71,9 @@ export default function PlayMode() {
       isLoading: false,
       gameEnded: false,
       isPlayerTurn: false,
+      connected: false,
+      connecting: false,
+      backendReady: false,
       // 位置系统重置
       locations: [],
       playerLocation: '',
@@ -230,38 +228,6 @@ export default function PlayMode() {
         background: '#C0C0C0',
       }}>
 
-      {/* ── OUTER WINDOW TITLE BAR ── */}
-      <div className="title-bar">
-        <div className="win-icon">F</div>
-        <span>FacadeRemake — Play Mode</span>
-        <span style={{ fontFamily:'"Courier New",monospace', fontSize:'10px', opacity:0.7, fontWeight:400, marginLeft:'4px' }}>
-          v2.0 [Retro Edition]
-        </span>
-        <span className="new-badge pulse-badge" style={{
-          background:'#FF0000', color:'#FFFF00', fontSize:'9px',
-          padding:'1px 5px', letterSpacing:'0.08em',
-          fontFamily:'"Arial Black",sans-serif',
-          animation:'pulse-glow 1.5s ease-in-out infinite',
-        }}>NEW!</span>
-        <div className="title-bar-btns">
-          <div className="title-bar-btn" title="minimize">_</div>
-          <div className="title-bar-btn" title="maximize">□</div>
-          <div className="title-bar-btn" title="close" style={{ background:'#c02020', color:'#fff', fontWeight:900 }}>✕</div>
-        </div>
-      </div>
-
-      {/* Marquee 滚动公告栏 — 90s */}
-      <div className="marquee-bar" role="marquee" aria-live="polite">
-        <div className="marquee-inner">
-          <span style={{color:'#FFFF00'}}>★ WELCOME TO FACADE REMAKE ★</span>
-          <span style={{color:'#00FF00'}}>◆ 角色：TRIP &amp; GRACE ◆</span>
-          <span style={{color:'#FF8000'}}>▲ INTERACTIVE NARRATIVE ▲</span>
-          <span style={{color:'#80FFFF'}}>◎ WebSocket ENABLED ◎</span>
-          <span style={{color:'#FFFF00'}}>★ WELCOME TO FACADE REMAKE ★</span>
-        </div>
-      </div>
-
-      {/* 连接状态横幅 */}
       <ConnectionBanner />
 
       <div className="hr-groove" />
