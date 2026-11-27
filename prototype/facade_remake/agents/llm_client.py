@@ -2,9 +2,14 @@
 LLM 客户端模块
 封装 LLM 调用，支持多 Provider 切换
 """
+import asyncio
 import os
-from typing import Optional, Dict, Any, List
+from typing import Callable, Optional, Dict, Any, List, TypeVar
 from pathlib import Path
+
+from pydantic import BaseModel
+
+StructuredOutputT = TypeVar("StructuredOutputT", bound=BaseModel)
 
 # 加载 .env 文件
 try:
@@ -151,6 +156,46 @@ class LLMClient:
             traceback.print_exc()
             # 返回一个默认的 beat plan，让系统可以继续运行
             return '[{"speaker": "trip", "addressee": "player", "intent": "等待玩家反应", "urgency": "medium", "world_state_delta": {}, "state_change_hint": "气氛微妙"}]'
+
+    async def structured_completion(
+        self,
+        prompt: str,
+        output_type: type[StructuredOutputT],
+        *,
+        output_validator: Callable[[StructuredOutputT], StructuredOutputT],
+        temperature: float = 0.75,
+        debug_tag: str = "",
+    ) -> StructuredOutputT:
+        """用现有供应商配置生成结构化结果，不要求支持工具调用。"""
+        from openai import AsyncOpenAI
+        from pydantic_ai import Agent, PromptedOutput
+        from pydantic_ai.models.openai import OpenAIChatModel
+        from pydantic_ai.providers.openai import OpenAIProvider
+
+        self._emit_debug("llm_request", {
+            "_print": f"[LLM] structured model={self.model}, component={debug_tag}",
+            "model": self.model,
+            "temperature": temperature,
+            "messages": [{"role": "user", "content": prompt}],
+            "component": debug_tag,
+        })
+        async with AsyncOpenAI(api_key=self.api_key, base_url=self.base_url,
+                               timeout=60.0, max_retries=0) as client:
+            model = OpenAIChatModel(self.model, provider=OpenAIProvider(openai_client=client))
+            agent = Agent(model, output_type=PromptedOutput(output_type), retries=1)
+            agent.output_validator(output_validator)
+            result = await asyncio.wait_for(
+                agent.run(prompt, model_settings={"temperature": temperature}),
+                timeout=60.0,
+            )
+
+        content = result.output.model_dump_json()
+        self._emit_debug("llm_response", {
+            "_print": f"  [LLM Response] {content}",
+            "content": content,
+            "component": debug_tag,
+        })
+        return result.output
 
     def call_llm(self, prompt: str, max_tokens: Optional[int] = None,
                  temperature: float = 0.3, debug_tag: str = "") -> str:

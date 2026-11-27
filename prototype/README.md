@@ -148,3 +148,17 @@ Provider 预设定义在 `agents/llm_client.py` 的 `PROVIDER_PRESETS` 字典中
 - [ ] Plot-based Reflection（每5轮角色内心动机更新）
 - [ ] 保存/加载游戏状态
 - [ ] 更多内置场景
+
+### 角色结构化输出
+
+Play 的角色回应通过 Pydantic AI 校验 `thought`、`dialogue` 和 `action`。
+缺少字段、类型不符或命中角色的禁止词时，最多重试一次；校验仍失败或
+请求超时，就返回「……」且不附带动作。动作 ID 继续由现有场景动作库
+校验，`chat` WebSocket 消息格式不变。导演和输入门控仍走原有调用。
+
+使用已有的 LLM 配置，无需添加 API Key。安装 `requirements.txt` 后，
+在 `prototype/` 下运行以下测试（模拟模型，不访问真实 API）：
+
+```bash
+python -m unittest -v test_character_output
+```

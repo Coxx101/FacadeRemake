@@ -6,12 +6,27 @@
 - BeatContext：Beat 执行上下文
 - generate_response：基于 Beat 指令生成角色响应
 """
-import json
+import asyncio
 import re
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional
 
+from openai import APIError
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic_ai import ModelRetry
+from pydantic_ai.exceptions import AgentRunError
+
 from config.scenario_schema import ScenarioConfig
+
+
+class CharacterOutput(BaseModel):
+    """角色输出；动作序列保留现有前端格式。"""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    thought: str = Field(description="角色的内心想法；没有则为空字符串")
+    dialogue: str = Field(description="角色说出的台词；没有则为空字符串")
+    action: str = Field(description="动作序列，例如 look_at[player]say[]smirk；没有则为空字符串")
 
 
 @dataclass
@@ -41,7 +56,7 @@ class CharacterAgent:
     """角色 Agent
 
     核心方法：
-    - generate_response() - 一次 LLM 调用生成 thought/speech/action
+    - generate_response() - 生成并校验 thought/speech/action
     """
 
     def __init__(self, llm_client, character: str, character_profile: Dict = None,
@@ -64,12 +79,12 @@ class CharacterAgent:
         """设置场景配置（包含元素库）"""
         self._scenario_config = config
 
-    def generate_response(self, player_input: str, storylet_content: Dict[str, Any],
+    async def generate_response(self, player_input: str, storylet_content: Dict[str, Any],
                          world_state: Dict[str, Any], conversation_history: List[str] = None,
                          director_instruction: str = "",
                          forbidden_topics: List[str] = None,
                          beat_intent: str = "", addressee: str = "") -> Dict[str, str]:
-        """生成角色回应（一次 LLM 调用产出 thought + speech + action）
+        """生成角色回应（产出 thought + speech + action；格式错误时有限重试）
 
         Args:
             player_input: 玩家输入文本（角色自主推进时为空字符串）
@@ -98,7 +113,7 @@ class CharacterAgent:
             scenario_config=self._scenario_config
         )
 
-        result = self._generate_beat_response(beat, context)
+        result = await self._generate_beat_response(beat, context)
 
         result["speech"] = self._strip_name_prefix(result.get("dialogue", ""))
 
@@ -115,7 +130,7 @@ class CharacterAgent:
     # ─────────────────────────────────────────────────────
     # 核心方法：基于 Beat 指令生成角色回应
     # ─────────────────────────────────────────────────────
-    def _generate_beat_response(self, beat: Beat, context: BeatContext) -> Dict[str, Any]:
+    async def _generate_beat_response(self, beat: Beat, context: BeatContext) -> Dict[str, Any]:
         """基于 Beat 指令生成角色响应
 
         Args:
@@ -127,15 +142,31 @@ class CharacterAgent:
         """
         prompt = self._build_beat_prompt(beat, context)
 
-        raw = self._generate_with_retry(prompt, context.character_profile.get("ng_words", []))
+        ng_words = context.character_profile.get("ng_words", [])
 
-        result = self._parse_beat_response(raw)
+        def validate_output(output: CharacterOutput) -> CharacterOutput:
+            if any(self._contains_ng_words(field, ng_words) for field in
+                   (output.thought, output.dialogue, output.action)):
+                raise ModelRetry("角色输出含有禁止话题；请改用不涉及这些话题的回应。")
+            return output
 
-        result["action"] = self._validate_actions(result.get("action", ""))
+        try:
+            output = await self.llm_client.structured_completion(
+                prompt, CharacterOutput, output_validator=validate_output,
+                temperature=0.75, debug_tag=f"Character/{self.character}",
+            )
+        except (AgentRunError, APIError, asyncio.TimeoutError) as exc:
+            if self.debug_mode:
+                print(f"[Character] {self.character} 结构化生成失败：{type(exc).__name__}")
+            # 不将无效 JSON、未经校验的台词或供应商错误透传给玩家。
+            return {"thought": "", "dialogue": "……", "action": "", "raw": ""}
 
-        result["raw"] = raw
-
-        return result
+        return {
+            "thought": output.thought.strip(),
+            "dialogue": output.dialogue.strip(),
+            "action": self._validate_actions(output.action.strip()),
+            "raw": output.model_dump_json(),
+        }
 
     def _build_beat_prompt(self, beat: Beat, context: BeatContext) -> str:
         """构建 Beat 驱动的 Prompt"""
@@ -196,14 +227,6 @@ class CharacterAgent:
             parts.append(f"\n【禁止话题】{'、'.join(forbidden_topics)}")
 
         parts.append("""
-【输出格式 - 必须严格遵循】
-只输出 JSON，不要有任何其他文字：
-{
-  "thought": "你此刻内心真实的想法（1-2句话）",
-  "dialogue": "你说出的台词（如果没有台词则为空字符串）",
-  "action": "动作序列，如 walk_to[living_room]look_at[player]say[]happy"
-}
-
 【动作序列规则】
 - 动作格式：[动作ID][参数（可选）]
 - 示例：walk_to[living_room]look_at[player]say[]happy
@@ -332,49 +355,6 @@ class CharacterAgent:
                 validated_parts.append(suffix)
 
         return "".join(validated_parts)
-
-    def _generate_with_retry(self, prompt: str, ng_words: List[str],
-                            max_retry: int = 3) -> str:
-        """生成并处理 NG words"""
-        temperature = 0.75
-
-        messages = [{"role": "system", "content": prompt}]
-        result = self.llm_client.chat_completion(messages, temperature=temperature)
-
-        retry = 0
-        while self._contains_ng_words(result, ng_words) and retry < max_retry:
-            retry += 1
-            if self.debug_mode:
-                print(f"[Character] {self.character} 检测到 NG words，重试 {retry}/{max_retry}...")
-            result = self.llm_client.chat_completion(messages, temperature=temperature)
-
-        return result.strip()
-
-    def _parse_beat_response(self, raw: str) -> Dict[str, str]:
-        """解析 Beat 响应"""
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            lines = cleaned.split("\n")
-            cleaned = "\n".join(lines[1:-1]) if len(lines) > 2 else cleaned
-
-        try:
-            data = json.loads(cleaned)
-            thought = str(data.get("thought", "")).strip()
-            dialogue = str(data.get("dialogue", "")).strip()
-            action = str(data.get("action", "")).strip()
-            return {"thought": thought, "dialogue": dialogue, "action": action}
-        except json.JSONDecodeError:
-            json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
-            if json_match:
-                try:
-                    data = json.loads(json_match.group(0))
-                    thought = str(data.get("thought", "")).strip()
-                    dialogue = str(data.get("dialogue", "")).strip()
-                    action = str(data.get("action", "")).strip()
-                    return {"thought": thought, "dialogue": dialogue, "action": action}
-                except:
-                    pass
-            return {"thought": "", "dialogue": self._strip_name_prefix(cleaned), "action": ""}
 
     def _contains_ng_words(self, text: str, ng_words: List[str]) -> bool:
         """检查 NG words"""

@@ -246,7 +246,7 @@ class GameEngine:
                     break
                 else:
                     speaker = beat.get("speaker", "trip")
-                    self._execute_storylet(
+                    await self._execute_storylet(
                         beat_intent=beat.get("intent", ""),
                         speaker=speaker,
                         addressee=beat.get("addressee", ""),
@@ -423,7 +423,7 @@ class GameEngine:
 
     # ── Beat 自动化 ──────────────────────────────────────────────────
 
-    def handle_auto_beat(self):
+    async def handle_auto_beat(self):
         if not self.current_beat_plan or self.beat_index >= len(self.current_beat_plan):
             if self.event_loop:
                 self.event_loop.notify_beat_done()
@@ -444,7 +444,7 @@ class GameEngine:
             beat_intent = beat.get("intent", "")
             addressee = beat.get("addressee", "")
 
-            char_count = self._execute_storylet(
+            char_count = await self._execute_storylet(
                 beat_intent=beat_intent, speaker=speaker, addressee=addressee
             )
             self.last_beat_char_count = char_count or 0
@@ -457,19 +457,19 @@ class GameEngine:
             if self.event_loop:
                 self.event_loop.notify_beat_done()
 
-    def _execute_storylet(self, player_input: str = "", beat_intent: str = "",
+    async def _execute_storylet(self, player_input: str = "", beat_intent: str = "",
                           speaker: str = "", addressee: str = ""):
         if not self.current_storylet:
             return
         if not speaker or speaker not in ("trip", "grace"):
             return
 
-        return self._generate_character_response(
+        return await self._generate_character_response(
             speaker, player_input, self.current_storylet.content,
             beat_intent=beat_intent, addressee=addressee,
         )
 
-    def _generate_character_response(self, character: str, player_input: str,
+    async def _generate_character_response(self, character: str, player_input: str,
                                       content: Dict, beat_intent: str = "",
                                       addressee: str = ""):
         effective_content = dict(content)
@@ -498,7 +498,7 @@ class GameEngine:
 
         agent = self.get_character_agent(character)
 
-        result = agent.generate_response(
+        result = await agent.generate_response(
             player_input, effective_content, self.world_state.to_dict(),
             self.state_manager.get_conversation_history(),
             director_instruction=director_instruction,

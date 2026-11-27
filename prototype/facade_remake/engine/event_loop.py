@@ -218,6 +218,6 @@ class GameEventLoop:
                 elif event["type"] == "player_silence":
                     await self._loop.run_in_executor(None, self.engine.handle_player_silence)
                 elif event["type"] == "auto_beat":
-                    await self._loop.run_in_executor(None, self.engine.handle_auto_beat)
+                    await self.engine.handle_auto_beat()
             except Exception as e:
                 self.engine.logger.error(f"事件消费错误: {e}", module="event", exception=e)
